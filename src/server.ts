@@ -1,0 +1,17 @@
+import http from "http";
+import app from "./app";
+import { connectDB } from "./config/db";
+import { env } from "./config/env";
+
+const server = http.createServer(app);
+
+const startServer = async () => {
+  await connectDB();
+
+  server.listen(env.port, () => {
+    console.log(`Atria backend running on port ${env.port}`);
+  });
+};
+
+startServer();
+
