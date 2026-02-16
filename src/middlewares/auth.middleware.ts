@@ -38,3 +38,29 @@ export const authMiddleware = (
     next(err);
   }
 };
+
+export const optionalAuthMiddleware = (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return next();
+    }
+
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, env.accessTokenSecret) as JwtPayload;
+
+    req.user = {
+      userId: decoded.userId,
+      role: decoded.role
+    };
+
+    next();
+  } catch (_err: any) {
+    next();
+  }
+};

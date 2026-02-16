@@ -1,6 +1,9 @@
 import mongoose, { Schema, Document } from "mongoose";
 import { IUser } from "../users/user.model";
 
+/**
+ * Event Types
+ */
 export enum EventType {
   CONFERENCE = "CONFERENCE",
   FEST = "FEST",
@@ -8,54 +11,155 @@ export enum EventType {
   CUSTOM = "CUSTOM"
 }
 
+/**
+ * Full Lifecycle States
+ */
 export enum EventStatus {
   DRAFT = "DRAFT",
   PUBLISHED = "PUBLISHED",
+  REGISTRATION_OPEN = "REGISTRATION_OPEN",
   ONGOING = "ONGOING",
-  COMPLETED = "COMPLETED"
+  COMPLETED = "COMPLETED",
+  CANCELLED = "CANCELLED",
+  ARCHIVED = "ARCHIVED"
 }
 
+/**
+ * Capability Configuration Interface
+ */
+export interface EventCapabilities {
+  registration: boolean;
+  submissions: boolean;
+  review: boolean;
+  teams: boolean;
+  scoring: boolean;
+  sessions: boolean;
+  realtime: boolean;
+}
+
+/**
+ * Registration Form Field Interface
+ */
+export interface IRegistrationFormField {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'email' | 'select' | 'checkbox' | 'textarea';
+  required: boolean;
+  options?: string[];
+  placeholder?: string;
+}
+
+/**
+ * Event Document Interface
+ */
 export interface IEvent extends Document {
   title: string;
   description: string;
   eventType: EventType;
+
   startDate: Date;
   endDate: Date;
+
+  registrationStartDate?: Date;
+  registrationEndDate?: Date;
+
   createdBy: mongoose.Types.ObjectId | string | IUser;
   isPublic: boolean;
+
   status: EventStatus;
-  hasTeams?: boolean;
-  hasCategories?: boolean;
-  hasJudging?: boolean;
-  hasScoring?: boolean;
+
+  capabilities: EventCapabilities;
+
+  registrationForm?: IRegistrationFormField[];
+
   createdAt?: Date;
   updatedAt?: Date;
 }
 
+/**
+ * Event Schema
+ */
 const eventSchema = new Schema<IEvent>(
   {
-    title: { type: String, required: true, trim: true },
-    description: { type: String, required: true, trim: true },
+    title: {
+      type: String,
+      required: true,
+      trim: true
+    },
+
+    description: {
+      type: String,
+      required: true,
+      trim: true
+    },
+
     eventType: {
       type: String,
       enum: Object.values(EventType),
       required: true
     },
-    startDate: { type: Date, required: true },
-    endDate: { type: Date, required: true },
-    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    isPublic: { type: Boolean, default: true },
+
+    startDate: {
+      type: Date,
+      required: true
+    },
+
+    endDate: {
+      type: Date,
+      required: true
+    },
+
+    registrationStartDate: {
+      type: Date
+    },
+
+    registrationEndDate: {
+      type: Date
+    },
+
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true
+    },
+
+    isPublic: {
+      type: Boolean,
+      default: true
+    },
+
     status: {
       type: String,
       enum: Object.values(EventStatus),
       default: EventStatus.DRAFT
     },
-    hasTeams: { type: Boolean, default: false },
-    hasCategories: { type: Boolean, default: false },
-    hasJudging: { type: Boolean, default: false },
-    hasScoring: { type: Boolean, default: false }
+
+    capabilities: {
+      registration: { type: Boolean, default: false },
+      submissions: { type: Boolean, default: false },
+      review: { type: Boolean, default: false },
+      teams: { type: Boolean, default: false },
+      scoring: { type: Boolean, default: false },
+      sessions: { type: Boolean, default: false },
+      realtime: { type: Boolean, default: false }
+    },
+
+    registrationForm: [{
+      id: { type: String, required: true },
+      label: { type: String, required: true },
+      type: { 
+        type: String, 
+        enum: ['text', 'number', 'email', 'select', 'checkbox', 'textarea'],
+        required: true 
+      },
+      required: { type: Boolean, default: false },
+      options: [{ type: String }],
+      placeholder: { type: String }
+    }]
   },
-  { timestamps: true }
+  {
+    timestamps: true
+  }
 );
 
 export const Event = mongoose.model<IEvent>("Event", eventSchema);

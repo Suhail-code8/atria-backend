@@ -7,12 +7,20 @@ interface CreateEventInput {
   eventType: string;
   startDate: Date | string;
   endDate: Date | string;
+  registrationStartDate?: Date | string;
+  registrationEndDate?: Date | string;
+  registrationForm?: any[];
   isPublic?: boolean;
-  status?: string;
-  hasTeams?: boolean;
-  hasCategories?: boolean;
-  hasJudging?: boolean;
-  hasScoring?: boolean;
+  capabilities?: {
+    registration?: boolean;
+    submissions?: boolean;
+    teams?: boolean;
+    certificates?: boolean;
+    review?: boolean;
+    scoring?: boolean;
+    sessions?: boolean;
+    realtime?: boolean;
+  };
 }
 
 export const sanitizeEvent = (event: IEvent) => {
@@ -23,13 +31,13 @@ export const sanitizeEvent = (event: IEvent) => {
     eventType: event.eventType,
     startDate: event.startDate,
     endDate: event.endDate,
+    registrationStartDate: event.registrationStartDate,
+    registrationEndDate: event.registrationEndDate,
     createdBy: event.createdBy?.toString(),
     isPublic: event.isPublic,
     status: event.status,
-    hasTeams: event.hasTeams,
-    hasCategories: event.hasCategories,
-    hasJudging: event.hasJudging,
-    hasScoring: event.hasScoring,
+    registrationForm: event.registrationForm || [],
+    capabilities: event.capabilities,
     createdAt: event.createdAt,
     updatedAt: event.updatedAt
   };
@@ -43,25 +51,98 @@ export const createEvent = async (data: CreateEventInput, userId: string) => {
     throw error;
   }
 
+  // Validate dates
+  const startDate = new Date(data.startDate);
+  const endDate = new Date(data.endDate);
+  
+  if (endDate <= startDate) {
+    const error: any = new Error("Event end date must be after start date");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const rawRegistrationStartDate = data.registrationStartDate;
+  const rawRegistrationEndDate = data.registrationEndDate;
+
+  const hasRegistrationStartDate =
+    rawRegistrationStartDate !== undefined &&
+    rawRegistrationStartDate !== null &&
+    rawRegistrationStartDate !== "";
+
+  const hasRegistrationEndDate =
+    rawRegistrationEndDate !== undefined &&
+    rawRegistrationEndDate !== null &&
+    rawRegistrationEndDate !== "";
+
+  if (hasRegistrationStartDate !== hasRegistrationEndDate) {
+    const error: any = new Error("Both registration start and end dates must be provided together");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let registrationStartDate: Date | undefined;
+  let registrationEndDate: Date | undefined;
+
+  if (hasRegistrationStartDate && hasRegistrationEndDate) {
+    registrationStartDate = new Date(rawRegistrationStartDate as Date | string);
+    registrationEndDate = new Date(rawRegistrationEndDate as Date | string);
+
+    if (Number.isNaN(registrationStartDate.getTime()) || Number.isNaN(registrationEndDate.getTime())) {
+      const error: any = new Error("Invalid registration window dates");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (registrationEndDate <= registrationStartDate) {
+      const error: any = new Error("Registration end date must be after start date");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // if (registrationStartDate < startDate || registrationEndDate > endDate) {
+    //   const error: any = new Error("Registration window must be within the event duration");
+    //   error.statusCode = 400;
+    //   throw error;
+    // }
+  }
+
+  // Initialize capabilities with defaults
+  const capabilities = {
+    registration: false,
+    submissions: false,
+    review: false,
+    teams: false,
+    scoring: false,
+    sessions: false,
+    realtime: false,
+    ...data.capabilities
+  };
+
   const event = await Event.create({
     title: data.title,
     description: data.description,
     eventType: data.eventType,
-    startDate: new Date(data.startDate),
-    endDate: new Date(data.endDate),
+    startDate,
+    endDate,
+    registrationStartDate,
+    registrationEndDate,
+    registrationForm: data.registrationForm,
     createdBy: new mongoose.Types.ObjectId(userId),
     isPublic: data.isPublic ?? true,
-    status: data.status ?? EventStatus.DRAFT,
-    hasTeams: data.hasTeams ?? false,
-    hasCategories: data.hasCategories ?? false,
-    hasJudging: data.hasJudging ?? false,
-    hasScoring: data.hasScoring ?? false
+    status: EventStatus.DRAFT,
+    capabilities
   });
 
   return sanitizeEvent(event);
 };
 
 export const updateEvent = async (eventId: string, data: Partial<CreateEventInput>, userId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
   const event = await Event.findById(eventId);
   if (!event) {
     const error: any = new Error("Event not found");
@@ -82,22 +163,40 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
     "startDate",
     "endDate",
     "isPublic",
-    "status",
-    "hasTeams",
-    "hasCategories",
-    "hasJudging",
-    "hasScoring"
+    "registrationStartDate",
+    "registrationEndDate",
+    "registrationForm"
   ];
 
+  // Update allowed fields
   allowed.forEach((key) => {
     if ((data as any)[key] !== undefined) {
       (event as any)[key] = (data as any)[key];
     }
   });
 
-  // Ensure dates are Date objects
-  if (data.startDate) event.startDate = new Date(data.startDate as any);
-  if (data.endDate) event.endDate = new Date(data.endDate as any);
+  // Validate and update dates if provided
+  if (data.startDate || data.endDate) {
+    const startDate = data.startDate ? new Date(data.startDate as any) : event.startDate;
+    const endDate = data.endDate ? new Date(data.endDate as any) : event.endDate;
+    
+    if (endDate <= startDate) {
+      const error: any = new Error("Event end date must be after start date");
+      error.statusCode = 400;
+      throw error;
+    }
+    
+    if (data.startDate) event.startDate = startDate;
+    if (data.endDate) event.endDate = endDate;
+  }
+
+  // Safely update capabilities if provided
+  if (data.capabilities) {
+    event.capabilities = {
+      ...event.capabilities,
+      ...data.capabilities
+    };
+  }
 
   await event.save();
 
@@ -105,6 +204,12 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
 };
 
 export const deleteEvent = async (eventId: string, userId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
   const event = await Event.findById(eventId);
   if (!event) {
     const error: any = new Error("Event not found");
@@ -127,6 +232,12 @@ export const deleteEvent = async (eventId: string, userId: string) => {
 };
 
 export const getEventById = async (eventId: string, requesterUserId?: string) => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
   const event = await Event.findById(eventId);
   if (!event) {
     const error: any = new Error("Event not found");
@@ -134,10 +245,18 @@ export const getEventById = async (eventId: string, requesterUserId?: string) =>
     throw error;
   }
 
-  if (!event.isPublic && !requesterUserId) {
-    const error: any = new Error("Unauthorized: Event is private");
-    error.statusCode = 401;
-    throw error;
+  // Check private event access
+  if (!event.isPublic) {
+    if (!requesterUserId) {
+      const error: any = new Error("Unauthorized: Event is private");
+      error.statusCode = 401;
+      throw error;
+    }
+    if (event.createdBy.toString() !== requesterUserId) {
+      const error: any = new Error("Forbidden: Access denied to private event");
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   return sanitizeEvent(event);
