@@ -6,7 +6,7 @@ import { Participation, ParticipationRole } from "../participation/participation
 import { Submission, SubmissionStatus } from "../submissions/submission.model";
 import mongoose from "mongoose";
 
-// 1. Create Event (Fixed to ensure Registration Dates & Form are saved)
+                                                                        
 export const createEvent = async (
   req: Request,
   res: Response,
@@ -15,7 +15,7 @@ export const createEvent = async (
   try {
     const userId = req.user?.userId as string;
     
-    // Explicitly destructure to ensure these specific fields are captured
+                                                                          
     const { 
       title, 
       description, 
@@ -23,10 +23,10 @@ export const createEvent = async (
       startDate, 
       endDate, 
       isPublic,
-      registrationStartDate, // <--- Crucial fix
-      registrationEndDate,   // <--- Crucial fix
+      registrationStartDate,                    
+      registrationEndDate,                      
       capabilities,
-      registrationForm       // <--- Crucial for Dynamic Forms
+      registrationForm                                        
     } = req.body;
 
     const event = await eventService.createEvent({
@@ -48,7 +48,7 @@ export const createEvent = async (
   }
 };
 
-// 2. Update Event
+                  
 export const updateEvent = async (
   req: Request,
   res: Response,
@@ -64,7 +64,7 @@ export const updateEvent = async (
   }
 };
 
-// 3. Delete Event
+                  
 export const deleteEvent = async (
   req: Request,
   res: Response,
@@ -80,7 +80,7 @@ export const deleteEvent = async (
   }
 };
 
-// 4. Get Single Event
+                      
 export const getEvent = async (
   req: Request,
   res: Response,
@@ -96,7 +96,7 @@ export const getEvent = async (
   }
 };
 
-// 5. List Events (Fixed for Visibility Logic)
+                                              
 export const listEvents = async (
   req: Request,
   res: Response,
@@ -142,7 +142,7 @@ export const listEvents = async (
   }
 };
 
-// 6. Transition State
+                      
 export const transitionEvent = async (
   req: Request,
   res: Response,

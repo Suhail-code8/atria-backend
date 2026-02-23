@@ -12,6 +12,7 @@ export interface IUser extends Document {
   password: string;
   role: UserRole;
   refreshToken: string | null;
+  isGoogleAuth?: boolean;
 }
 
 const userSchema = new Schema<IUser>(

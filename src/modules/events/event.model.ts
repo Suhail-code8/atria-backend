@@ -1,9 +1,9 @@
 import mongoose, { Schema, Document } from "mongoose";
 import { IUser } from "../users/user.model";
 
-/**
- * Event Types
- */
+   
+              
+   
 export enum EventType {
   CONFERENCE = "CONFERENCE",
   FEST = "FEST",
@@ -11,9 +11,9 @@ export enum EventType {
   CUSTOM = "CUSTOM"
 }
 
-/**
- * Full Lifecycle States
- */
+   
+                        
+   
 export enum EventStatus {
   DRAFT = "DRAFT",
   PUBLISHED = "PUBLISHED",
@@ -24,9 +24,9 @@ export enum EventStatus {
   ARCHIVED = "ARCHIVED"
 }
 
-/**
- * Capability Configuration Interface
- */
+   
+                                     
+   
 export interface EventCapabilities {
   registration: boolean;
   submissions: boolean;
@@ -37,9 +37,9 @@ export interface EventCapabilities {
   realtime: boolean;
 }
 
-/**
- * Registration Form Field Interface
- */
+   
+                                    
+   
 export interface IRegistrationFormField {
   id: string;
   label: string;
@@ -49,9 +49,9 @@ export interface IRegistrationFormField {
   placeholder?: string;
 }
 
-/**
- * Event Document Interface
- */
+   
+                           
+   
 export interface IEvent extends Document {
   title: string;
   description: string;
@@ -76,9 +76,9 @@ export interface IEvent extends Document {
   updatedAt?: Date;
 }
 
-/**
- * Event Schema
- */
+   
+               
+   
 const eventSchema = new Schema<IEvent>(
   {
     title: {

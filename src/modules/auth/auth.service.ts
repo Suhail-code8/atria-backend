@@ -10,10 +10,10 @@ interface SanitizedUser {
   role: UserRole;
 }
 
-/**
- * Sanitize user object before returning
- * Removes sensitive fields: password, refreshToken
- */
+   
+                                        
+                                                   
+   
 export const sanitizeUser = (user: IUser): SanitizedUser => {
   return {
     _id: user._id.toString(),
@@ -23,9 +23,9 @@ export const sanitizeUser = (user: IUser): SanitizedUser => {
   };
 };
 
-/**
- * Generate access token (short-lived)
- */
+   
+                                      
+   
 export const generateAccessToken = (user: IUser): string => {
   return jwt.sign(
     {
@@ -39,9 +39,9 @@ export const generateAccessToken = (user: IUser): string => {
   );
 };
 
-/**
- * Generate refresh token (long-lived)
- */
+   
+                                      
+   
 export const generateRefreshToken = (user: IUser): string => {
   return jwt.sign(
     {
@@ -97,27 +97,27 @@ export const loginUser = async (
     throw new Error("Invalid credentials");
   }
 
-  // Generate tokens
+                    
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  // Save refresh token to database
+                                   
   user.refreshToken = refreshToken;
   await user.save();
 
   return { accessToken, refreshToken, user: sanitizeUser(user) };
 };
 
-/**
- * Refresh access token using valid refresh token
- */
+   
+                                                 
+   
 export const refreshAccessToken = async (
   refreshToken: string
 ): Promise<{
   accessToken: string;
   refreshToken: string;
 }> => {
-  // Verify refresh token
+                         
   let decoded: any;
   try {
     decoded = jwt.verify(refreshToken, env.refreshTokenSecret);
@@ -125,38 +125,38 @@ export const refreshAccessToken = async (
     throw new Error("Invalid or expired refresh token");
   }
 
-  // Find user by ID
+                    
   const user = await User.findById(decoded.userId);
   if (!user) {
     throw new Error("User not found");
   }
 
-  // Verify refresh token matches stored value
+                                              
   if (user.refreshToken !== refreshToken) {
     throw new Error("Refresh token does not match");
   }
 
-  // Generate new tokens
+                        
   const newAccessToken = generateAccessToken(user);
   const newRefreshToken = generateRefreshToken(user);
 
-  // Rotate refresh token in database
+                                     
   user.refreshToken = newRefreshToken;
   await user.save();
 
   return { accessToken: newAccessToken, refreshToken: newRefreshToken };
 };
 
-/**
- * Logout user by clearing refresh token
- */
+   
+                                        
+   
 export const logoutUser = async (userId: string): Promise<void> => {
   const user = await User.findById(userId);
   if (!user) {
     throw new Error("User not found");
   }
 
-  // Clear refresh token
+                        
   user.refreshToken = null;
   await user.save();
 };

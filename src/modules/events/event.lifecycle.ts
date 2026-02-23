@@ -1,9 +1,9 @@
 import { Event, IEvent, EventStatus } from "./event.model";
 import mongoose from "mongoose";
 
-/**
- * Allowed Transition Map
- */
+   
+                         
+   
 const allowedTransitions: Record<EventStatus, EventStatus[]> = {
   [EventStatus.DRAFT]: [
     EventStatus.PUBLISHED,
@@ -37,9 +37,9 @@ const allowedTransitions: Record<EventStatus, EventStatus[]> = {
   [EventStatus.ARCHIVED]: []
 };
 
-/**
- * Validate transition rule
- */
+   
+                           
+   
 const validateTransition = (
   currentState: EventStatus,
   targetState: EventStatus

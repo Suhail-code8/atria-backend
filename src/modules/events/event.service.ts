@@ -44,14 +44,14 @@ export const sanitizeEvent = (event: IEvent) => {
 };
 
 export const createEvent = async (data: CreateEventInput, userId: string) => {
-  // Basic validation
+                     
   if (!data.title || !data.description || !data.eventType || !data.startDate || !data.endDate) {
     const error: any = new Error("Missing required event fields");
     error.statusCode = 400;
     throw error;
   }
 
-  // Validate dates
+                   
   const startDate = new Date(data.startDate);
   const endDate = new Date(data.endDate);
   
@@ -99,14 +99,14 @@ export const createEvent = async (data: CreateEventInput, userId: string) => {
       throw error;
     }
 
-    // if (registrationStartDate < startDate || registrationEndDate > endDate) {
-    //   const error: any = new Error("Registration window must be within the event duration");
-    //   error.statusCode = 400;
-    //   throw error;
-    // }
+                                                                                
+                                                                                               
+                                
+                     
+        
   }
 
-  // Initialize capabilities with defaults
+                                          
   const capabilities = {
     registration: false,
     submissions: false,
@@ -168,14 +168,14 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
     "registrationForm"
   ];
 
-  // Update allowed fields
+                          
   allowed.forEach((key) => {
     if ((data as any)[key] !== undefined) {
       (event as any)[key] = (data as any)[key];
     }
   });
 
-  // Validate and update dates if provided
+                                          
   if (data.startDate || data.endDate) {
     const startDate = data.startDate ? new Date(data.startDate as any) : event.startDate;
     const endDate = data.endDate ? new Date(data.endDate as any) : event.endDate;
@@ -190,7 +190,7 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
     if (data.endDate) event.endDate = endDate;
   }
 
-  // Safely update capabilities if provided
+                                           
   if (data.capabilities) {
     event.capabilities = {
       ...event.capabilities,
@@ -223,7 +223,7 @@ export const deleteEvent = async (eventId: string, userId: string) => {
     throw error;
   }
 
-  // Soft delete: mark as draft and make private
+                                                
   event.status = EventStatus.DRAFT;
   event.isPublic = false;
   await event.save();
@@ -245,7 +245,7 @@ export const getEventById = async (eventId: string, requesterUserId?: string) =>
     throw error;
   }
 
-  // Check private event access
+                               
   if (!event.isPublic) {
     if (!requesterUserId) {
       const error: any = new Error("Unauthorized: Event is private");
@@ -264,19 +264,19 @@ export const getEventById = async (eventId: string, requesterUserId?: string) =>
 
 export const listEvents = async (requester?: { userId: string; role: string } | null) => {
   if (!requester) {
-    // Public listing
+                     
     const events = await Event.find({ isPublic: true }).sort({ startDate: -1 });
     return events.map(sanitizeEvent);
   }
 
-  // Authenticated requests
+                           
   if (requester.role === "ORGANIZER") {
     const mongooseId = new mongoose.Types.ObjectId(requester.userId);
     const events = await Event.find({ $or: [{ isPublic: true }, { createdBy: mongooseId }] }).sort({ startDate: -1 });
     return events.map(sanitizeEvent);
   }
 
-  // Other authenticated users see public events only
+                                                     
   const events = await Event.find({ isPublic: true }).sort({ startDate: -1 });
   return events.map(sanitizeEvent);
 };

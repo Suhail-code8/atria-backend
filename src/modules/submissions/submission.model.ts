@@ -2,9 +2,9 @@ import mongoose, { Schema, Document } from "mongoose";
 import { IEvent } from "../events/event.model";
 import { IParticipation } from "../participation/participation.model";
 
-/**
- * Content Type Enum
- */
+   
+                    
+   
 export enum ContentType {
   ABSTRACT = "ABSTRACT",
   PAPER = "PAPER",
@@ -13,9 +13,9 @@ export enum ContentType {
   CUSTOM = "CUSTOM"
 }
 
-/**
- * Submission Status Enum
- */
+   
+                         
+   
 export enum SubmissionStatus {
   DRAFT = "DRAFT",
   SUBMITTED = "SUBMITTED",
@@ -24,9 +24,9 @@ export enum SubmissionStatus {
   REJECTED = "REJECTED"
 }
 
-/**
- * File Upload Interface
- */
+   
+                        
+   
 export interface ISubmissionFile {
   publicId: string;
   url: string;
@@ -35,11 +35,11 @@ export interface ISubmissionFile {
   size: number;
 }
 
-/**
- * Review Interface
- */
+   
+                   
+   
 export interface IReview {
-  score: number; // 0-100
+  score: number;         
   comment: string;
   feedbackFile?: {
     publicId: string;
@@ -49,9 +49,9 @@ export interface IReview {
   reviewedAt: Date;
 }
 
-/**
- * Submission Document Interface
- */
+   
+                                
+   
 export interface ISubmission extends Document {
   event: mongoose.Types.ObjectId | string | IEvent;
   participant: mongoose.Types.ObjectId | string | IParticipation;
@@ -68,9 +68,9 @@ export interface ISubmission extends Document {
   updatedAt?: Date;
 }
 
-/**
- * Submission Schema
- */
+   
+                    
+   
 const submissionSchema = new Schema<ISubmission>(
   {
     event: {
@@ -157,11 +157,11 @@ review: {
   }
 );
 
-// Indexes for performance
+                          
 submissionSchema.index({ event: 1 });
 submissionSchema.index({ participant: 1 });
 
-// Unique constraint: One submission per participant per event
+                                                              
 submissionSchema.index({ event: 1, participant: 1 }, { unique: true });
 
 export const Submission = mongoose.model<ISubmission>("Submission", submissionSchema);

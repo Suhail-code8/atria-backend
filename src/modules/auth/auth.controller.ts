@@ -1,12 +1,19 @@
 import { Request, Response, NextFunction } from "express";
 import { registerUser, loginUser, refreshAccessToken, logoutUser, sanitizeUser } from "./auth.service";
+import { generateAccessToken, generateRefreshToken } from "./auth.service";
+import { User, UserRole } from "../users/user.model";
+import { OAuth2Client } from "google-auth-library";
+import bcrypt from "bcrypt";
+import crypto from "crypto";
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID?.trim());
 
 const REFRESH_TOKEN_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict" as const,
   path: "/api/auth/refresh",
-  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
+  maxAge: 7 * 24 * 60 * 60 * 1000                          
 };
 
 export const register = async (
@@ -26,11 +33,11 @@ export const register = async (
   }
 };
 
-/**
- * Login endpoint
- * Returns access token in response body
- * Sets refresh token as httpOnly cookie
- */
+   
+                 
+                                        
+                                        
+   
 export const login = async (
   req: Request,
   res: Response,
@@ -40,7 +47,7 @@ export const login = async (
     const { email, password } = req.body;
     const result = await loginUser(email, password);
 
-    // Set refresh token as httpOnly cookie
+                                           
     res.cookie("refreshToken", result.refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
     res.status(200).json({
@@ -56,12 +63,12 @@ export const login = async (
   }
 };
 
-/**
- * Refresh access token endpoint
- * Reads refresh token from httpOnly cookie
- * Returns new access token in response body
- * Sets new refresh token as httpOnly cookie
- */
+   
+                                
+                                           
+                                            
+                                            
+   
 export const refresh = async (
   req: Request,
   res: Response,
@@ -78,7 +85,7 @@ export const refresh = async (
 
     const tokens = await refreshAccessToken(refreshToken);
 
-    // Set new refresh token as httpOnly cookie
+                                               
     res.cookie("refreshToken", tokens.refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
 
     res.status(200).json({
@@ -92,12 +99,12 @@ export const refresh = async (
   }
 };
 
-/**
- * Logout endpoint
- * Requires valid access token
- * Clears refresh token from database
- * Clears refresh token cookie
- */
+   
+                  
+                              
+                                     
+                              
+   
 export const logout = async (
   req: Request,
   res: Response,
@@ -114,7 +121,7 @@ export const logout = async (
 
     await logoutUser(userId);
 
-    // Clear refresh token cookie
+                                 
     res.cookie("refreshToken", "", {
       httpOnly: true,
       secure: true,
@@ -126,6 +133,72 @@ export const logout = async (
     res.status(200).json({
       success: true,
       message: "Logout successful"
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const googleLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      const error: any = new Error("Google credential is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID?.trim()
+    });
+
+    const payload = ticket.getPayload();
+    const email = payload?.email;
+    const name = payload?.name || "Google User";
+
+    if (!email) {
+      const error: any = new Error("Unable to verify Google account email");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const randomPassword = crypto.randomBytes(32).toString("hex");
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      user = await User.create({
+        name,
+        email,
+        password: hashedPassword,
+        role: UserRole.PARTICIPANT,
+        refreshToken: null,
+        isGoogleAuth: true
+      });
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res.cookie("refreshToken", refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
+
+    res.status(200).json({
+      success: true,
+      message: "Google login successful",
+      data: {
+        accessToken,
+        user: sanitizeUser(user)
+      }
     });
   } catch (error) {
     next(error);

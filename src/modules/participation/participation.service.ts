@@ -1,24 +1,25 @@
 import { Participation, IParticipation, ParticipationStatus, ParticipationRole } from "./participation.model";
 import { Event, EventStatus } from "../events/event.model";
+import { User, UserRole } from "../users/user.model";
 import mongoose from "mongoose";
 
-/**
- * Register User for Event
- * 
- * Guards:
- * - Event must exist
- * - Event status must be REGISTRATION_OPEN
- * - Event capability registration must be enabled
- * - Current date must be within registration window
- * - User must not already be registered (unique constraint)
- * - Registration form answers must satisfy required fields
- */
+   
+                          
+   
+          
+                     
+                                           
+                                                  
+                                                    
+                                                            
+                                                           
+   
 export const registerParticipant = async (
   eventId: string,
   userId: string,
   answers?: Record<string, any>
 ): Promise<IParticipation> => {
-  // 1️⃣ Validate IDs
+                     
   if (!mongoose.Types.ObjectId.isValid(eventId)) {
     const error: any = new Error("Invalid event ID");
     error.statusCode = 400;
@@ -31,7 +32,20 @@ export const registerParticipant = async (
     throw error;
   }
 
-  // 2️⃣ Event must exist
+  const user = await User.findById(userId);
+  if (!user) {
+    const error: any = new Error("User not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (user.role === UserRole.ORGANIZER) {
+    const error: any = new Error("Organizers cannot register for events.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+                         
   const event = await Event.findById(eventId);
   if (!event) {
     const error: any = new Error("Event not found");
@@ -39,7 +53,7 @@ export const registerParticipant = async (
     throw error;
   }
 
-  // 3️⃣ Event status must be REGISTRATION_OPEN
+                                               
   if (event.status !== EventStatus.REGISTRATION_OPEN) {
     const error: any = new Error(
       `Event registration is not open. Current status: ${event.status}`
@@ -107,7 +121,7 @@ export const registerParticipant = async (
       status: ParticipationStatus.REGISTERED,
       role: ParticipationRole.PARTICIPANT,
       registeredAt: new Date(),
-      metadata: answers || {}
+      answers: answers || {}
     });
 
     return participation.populate(["event", "user"]);

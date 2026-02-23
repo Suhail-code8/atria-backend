@@ -3,10 +3,10 @@ import * as submissionService from "./submission.service";
 import { ContentType, SubmissionStatus } from "./submission.model";
 import { sendEmail } from "../../utils/email.service";
 
-/**
- * POST /api/events/:eventId/submissions
- * Create a new submission (DRAFT)
- */
+   
+                                        
+                                  
+   
 export const createSubmission = async (
   req: Request,
   res: Response,
@@ -18,14 +18,14 @@ export const createSubmission = async (
 
     const { title, description, type, content, metadata } = req.body;
 
-    // Validate required fields
+                               
     if (!title || !type) {
       const error: any = new Error("Title and type are required");
       error.statusCode = 400;
       throw error;
     }
 
-    // Validate type enum
+                         
     if (!Object.values(ContentType).includes(type)) {
       const error: any = new Error(
         `Invalid type. Allowed values: ${Object.values(ContentType).join(", ")}`
@@ -305,16 +305,11 @@ export const reviewSubmission = async (
     const submissionId = req.params.submissionId as string;
     const userId = req.user!.userId;
     const { score, comment, status } = req.body;
+    const normalizedComment = typeof comment === "string" ? comment.trim() : "";
 
     // Validate required fields
     if (score === undefined || score === null) {
       const error: any = new Error("Score is required");
-      error.statusCode = 400;
-      throw error;
-    }
-
-    if (!comment) {
-      const error: any = new Error("Comment is required");
       error.statusCode = 400;
       throw error;
     }
@@ -334,10 +329,16 @@ export const reviewSubmission = async (
       throw error;
     }
 
+    if (status === SubmissionStatus.REJECTED && !normalizedComment) {
+      const error: any = new Error("Comment is required for rejected submissions");
+      error.statusCode = 400;
+      throw error;
+    }
+
     const submission = await submissionService.reviewSubmission(
       submissionId,
       userId,
-      { score, comment, status }
+      { score, comment: normalizedComment, status }
     );
 
     res.status(200).json({

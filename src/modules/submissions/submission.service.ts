@@ -4,15 +4,15 @@ import { Participation, ParticipationRole, ParticipationStatus } from "../partic
 import cloudinary from "../../config/cloudinary";
 import mongoose from "mongoose";
 
-/**
- * Create a submission
- * 
- * Guards:
- * - Event must exist
- * - Event must have submissions capability enabled
- * - User must be a registered PARTICIPANT of the event
- * - Creates submission in DRAFT status
- */
+   
+                      
+   
+          
+                     
+                                                   
+                                                       
+                                       
+   
 export const createSubmission = async (
   eventId: string,
   userId: string,
@@ -25,7 +25,7 @@ export const createSubmission = async (
     file?: ISubmissionFile;
   }
 ): Promise<ISubmission> => {
-  // 1️⃣ Validate IDs
+                     
   if (!mongoose.Types.ObjectId.isValid(eventId)) {
     const error: any = new Error("Invalid event ID");
     error.statusCode = 400;
@@ -38,7 +38,7 @@ export const createSubmission = async (
     throw error;
   }
 
-  // 2️⃣ Event must exist
+                         
   const event = await Event.findById(eventId);
   if (!event) {
     const error: any = new Error("Event not found");
@@ -46,14 +46,14 @@ export const createSubmission = async (
     throw error;
   }
 
-  // 3️⃣ Event must allow submissions
+                                     
   if (!event.capabilities.submissions) {
     const error: any = new Error("Event does not allow submissions");
     error.statusCode = 400;
     throw error;
   }
 
-  // 4️⃣ User must be a registered PARTICIPANT
+                                              
   const participation = await Participation.findOne({
     event: new mongoose.Types.ObjectId(eventId),
     user: new mongoose.Types.ObjectId(userId),
@@ -66,7 +66,7 @@ export const createSubmission = async (
     throw error;
   }
 
-  // Additional check: Participation should be in a valid state
+                                                               
   if (participation.status !== ParticipationStatus.REGISTERED && 
       participation.status !== ParticipationStatus.APPROVED) {
     const error: any = new Error(`Cannot create submission. Participation status: ${participation.status}`);
@@ -88,7 +88,13 @@ export const createSubmission = async (
       status: SubmissionStatus.DRAFT
     });
 
-    return submission.populate(["event", "participant"]);
+    return submission.populate([
+      "event",
+      {
+        path: "participant",
+        populate: { path: "user", select: "name email" }
+      }
+    ]);
   } catch (err: any) {
     // Handle unique constraint violation (duplicate submission)
     if (err.code === 11000) {
@@ -177,7 +183,13 @@ export const updateSubmission = async (
   }
 
   await submission.save();
-  return submission.populate(["event", "participant"]);
+  return submission.populate([
+    "event",
+    {
+      path: "participant",
+      populate: { path: "user", select: "name email" }
+    }
+  ]);
 };
 
 /**
@@ -230,7 +242,13 @@ export const submitSubmission = async (
   submission.submittedAt = new Date();
 
   await submission.save();
-  return submission.populate(["event", "participant"]);
+  return submission.populate([
+    "event",
+    {
+      path: "participant",
+      populate: { path: "user", select: "name email" }
+    }
+  ]);
 };
 
 /**
@@ -253,7 +271,13 @@ export const getSubmission = async (
 
   // 2️⃣ Submission must exist
   const submission = await Submission.findById(submissionId)
-    .populate("participant")
+    .populate({
+      path: "participant",
+      populate: {
+        path: "user",
+        select: "name email"
+      }
+    })
     .populate("event");
 
   if (!submission) {
@@ -468,7 +492,7 @@ export const reviewSubmission = async (
   userId: string,
   data: {
     score: number;
-    comment: string;
+    comment?: string;
     status: SubmissionStatus;
   }
 ): Promise<ISubmission> => {
@@ -527,7 +551,7 @@ export const reviewSubmission = async (
   // 7️⃣ Update review and status
   submission.review = {
     score: data.score,
-    comment: data.comment,
+    comment: data.comment ?? "",
     reviewedBy: new mongoose.Types.ObjectId(userId),
     reviewedAt: new Date()
   };
@@ -535,5 +559,15 @@ export const reviewSubmission = async (
   
   await submission.save();
 
-  return submission.populate(["event", "participant", "review.reviewedBy"]);
+  return submission.populate([
+    "event",
+    {
+      path: "participant",
+      populate: {
+        path: "user",
+        select: "name email"
+      }
+    },
+    "review.reviewedBy"
+  ]);
 };

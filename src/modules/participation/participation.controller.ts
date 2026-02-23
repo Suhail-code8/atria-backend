@@ -4,10 +4,10 @@ import { Participation } from "./participation.model";
 import { ParticipationStatus } from "./participation.model";
 import { sendEmail } from "../../utils/email.service";
 
-/**
- * POST /participation/:eventId/register
- * Register current user for an event
- */
+   
+                                        
+                                     
+   
 export const registerForEvent = async (
   req: Request,
   res: Response,
