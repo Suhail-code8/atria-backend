@@ -8,6 +8,7 @@ import submissionRoutes from "./modules/submissions/submission.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 
 import userRoutes from "./modules/users/user.routes";
+import announcementRoutes from "./modules/announcements/announcement.routes";
 
 
 const app = express();
@@ -31,6 +32,7 @@ app.use("/api/events", eventRoutes);
 app.use("/api/events", submissionRoutes);
 app.use("/api/participation", participationRoutes);
 app.use("/api/participations", participationRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 
 app.use(errorHandler);
