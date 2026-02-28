@@ -13,6 +13,7 @@ export interface IUser extends Document {
   role: UserRole;
   refreshToken: string | null;
   isGoogleAuth?: boolean;
+  isPlaceholder?: boolean;
 }
 
 const userSchema = new Schema<IUser>(
@@ -40,6 +41,10 @@ const userSchema = new Schema<IUser>(
     refreshToken: {
       type: String,
       default: null
+    },
+    isPlaceholder: {
+      type: Boolean,
+      default: false
     }
   },
   { timestamps: true }

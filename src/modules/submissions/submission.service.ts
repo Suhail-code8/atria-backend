@@ -4,6 +4,21 @@ import { Participation, ParticipationRole, ParticipationStatus } from "../partic
 import cloudinary from "../../config/cloudinary";
 import mongoose from "mongoose";
 
+const getParticipantUserId = (participant: any): string => {
+  const user = participant?.user;
+  if (!user) return "";
+
+  if (typeof user === "string") return user;
+  if (user instanceof mongoose.Types.ObjectId) return user.toString();
+
+  return (
+    user._id?.toString?.() ||
+    user.id?.toString?.() ||
+    user.toString?.() ||
+    ""
+  );
+};
+
    
                       
    
@@ -143,7 +158,8 @@ export const updateSubmission = async (
 
   // 3️⃣ User must own the submission
   const participation = submission.participant as any;
-  if (participation.user.toString() !== userId) {
+  const ownerUserId = getParticipantUserId(participation);
+  if (ownerUserId !== userId) {
     const error: any = new Error("Forbidden: You can only update your own submissions");
     error.statusCode = 403;
     throw error;
@@ -222,7 +238,8 @@ export const submitSubmission = async (
 
   // 3️⃣ User must own the submission
   const participation = submission.participant as any;
-  if (participation.user.toString() !== userId) {
+  const ownerUserId = getParticipantUserId(participation);
+  if (ownerUserId !== userId) {
     const error: any = new Error("Forbidden: You can only submit your own submissions");
     error.statusCode = 403;
     throw error;
@@ -288,7 +305,7 @@ export const getSubmission = async (
 
   // 3️⃣ Check access: Owner OR Organizer/Judge
   const participation = submission.participant as any;
-  const isOwner = participation.user.toString() === userId;
+  const isOwner = getParticipantUserId(participation) === userId;
 
   if (!isOwner) {
     // Check if user has ORGANIZER or JUDGE role for this event

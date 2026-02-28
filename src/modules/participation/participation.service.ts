@@ -1,7 +1,16 @@
 import { Participation, IParticipation, ParticipationStatus, ParticipationRole } from "./participation.model";
 import { Event, EventStatus } from "../events/event.model";
 import { User, UserRole } from "../users/user.model";
+import { Team } from "../competitions/team.model";
 import mongoose from "mongoose";
+
+interface EventLeaderboardRow {
+  userId: string;
+  name: string;
+  email: string;
+  team: string;
+  individualPoints: number;
+}
 
    
                           
@@ -239,4 +248,83 @@ export const updateParticipationStatus = async (
   await participation.save();
 
   return participation.populate(["event", "user"]);
+};
+
+export const getEventLeaderboard = async (
+  eventId: string
+): Promise<EventLeaderboardRow[]> => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const eventObjectId = new mongoose.Types.ObjectId(eventId);
+
+  const leaderboard = await Participation.aggregate<EventLeaderboardRow>([
+    {
+      $match: {
+        event: eventObjectId,
+        role: ParticipationRole.PARTICIPANT
+      }
+    },
+    {
+      $lookup: {
+        from: User.collection.name,
+        localField: "user",
+        foreignField: "_id",
+        as: "userDoc"
+      }
+    },
+    {
+      $unwind: "$userDoc"
+    },
+    {
+      $lookup: {
+        from: Team.collection.name,
+        let: { participantId: "$user" },
+        pipeline: [
+          {
+            $match: {
+              event: eventObjectId
+            }
+          },
+          {
+            $match: {
+              $expr: {
+                $in: ["$$participantId", "$members.user"]
+              }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              name: 1
+            }
+          }
+        ],
+        as: "teamDoc"
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        userId: { $toString: "$user" },
+        name: "$userDoc.name",
+        email: "$userDoc.email",
+        team: {
+          $ifNull: [{ $arrayElemAt: ["$teamDoc.name", 0] }, "Unassigned"]
+        },
+        individualPoints: { $ifNull: ["$individualPoints", 0] }
+      }
+    },
+    {
+      $sort: {
+        individualPoints: -1,
+        name: 1
+      }
+    }
+  ]);
+
+  return leaderboard;
 };

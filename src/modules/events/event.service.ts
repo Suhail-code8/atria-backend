@@ -4,9 +4,20 @@ import mongoose from "mongoose";
 interface CreateEventInput {
   title: string;
   description: string;
+  location?: string;
   eventType: string;
   startDate: Date | string;
   endDate: Date | string;
+  isCompetition?: boolean;
+  isLeaderboardPublished?: boolean;
+  scoringRules?: {
+    places?: Map<string, number> | Record<string, number>;
+    grades?: Map<string, number> | Record<string, number>;
+  };
+  limits?: {
+    maxIndividualItemsPerParticipant?: number;
+    maxGroupItemsPerParticipant?: number;
+  };
   registrationStartDate?: Date | string;
   registrationEndDate?: Date | string;
   registrationForm?: any[];
@@ -28,6 +39,8 @@ export const sanitizeEvent = (event: IEvent) => {
     _id: event._id.toString(),
     title: event.title,
     description: event.description,
+    location: event.location,
+    posterUrl: event.posterUrl,
     eventType: event.eventType,
     startDate: event.startDate,
     endDate: event.endDate,
@@ -35,6 +48,10 @@ export const sanitizeEvent = (event: IEvent) => {
     registrationEndDate: event.registrationEndDate,
     createdBy: event.createdBy?.toString(),
     isPublic: event.isPublic,
+    isCompetition: event.isCompetition,
+    isLeaderboardPublished: event.isLeaderboardPublished,
+    scoringRules: event.scoringRules,
+    limits: event.limits,
     status: event.status,
     registrationForm: event.registrationForm || [],
     capabilities: event.capabilities,
@@ -121,12 +138,16 @@ export const createEvent = async (data: CreateEventInput, userId: string) => {
   const event = await Event.create({
     title: data.title,
     description: data.description,
+    location: data.location ?? "",
     eventType: data.eventType,
     startDate,
     endDate,
     registrationStartDate,
     registrationEndDate,
     registrationForm: data.registrationForm,
+    isCompetition: data.isCompetition,
+    scoringRules: data.scoringRules,
+    limits: data.limits,
     createdBy: new mongoose.Types.ObjectId(userId),
     isPublic: data.isPublic ?? true,
     status: EventStatus.DRAFT,
@@ -159,13 +180,18 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
   const allowed = [
     "title",
     "description",
+    "location",
     "eventType",
     "startDate",
     "endDate",
     "isPublic",
     "registrationStartDate",
     "registrationEndDate",
-    "registrationForm"
+    "registrationForm",
+    "isCompetition",
+    "isLeaderboardPublished",
+    "scoringRules",
+    "limits"
   ];
 
                           

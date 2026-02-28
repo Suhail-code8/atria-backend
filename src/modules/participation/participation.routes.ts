@@ -31,6 +31,11 @@ router.get(
   controller.getMyRegistrations
 );
 
+router.get(
+  "/event/:eventId/leaderboard",
+  controller.getEventLeaderboard
+);
+
                                                                      
 router.post(
   "/:eventId/withdraw",

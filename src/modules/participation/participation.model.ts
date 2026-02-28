@@ -29,6 +29,7 @@ export interface IParticipation extends Document {
   user: mongoose.Types.ObjectId | string | IUser;
   status: ParticipationStatus;
   role: ParticipationRole;
+  individualPoints?: number;
   metadata?: Record<string, any>;
   answers?: Record<string, any>;
   registeredAt?: Date;
@@ -63,6 +64,11 @@ const participationSchema = new Schema<IParticipation>(
       type: String,
       enum: Object.values(ParticipationRole),
       default: ParticipationRole.PARTICIPANT
+    },
+
+    individualPoints: {
+      type: Number,
+      default: 0
     },
 
     metadata: {

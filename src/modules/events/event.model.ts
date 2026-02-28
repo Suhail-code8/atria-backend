@@ -49,12 +49,24 @@ export interface IRegistrationFormField {
   placeholder?: string;
 }
 
+export interface IScoringRules {
+  places: Map<string, number>;
+  grades: Map<string, number>;
+}
+
+export interface IEventLimits {
+  maxIndividualItemsPerParticipant?: number;
+  maxGroupItemsPerParticipant?: number;
+}
+
    
                            
    
 export interface IEvent extends Document {
   title: string;
   description: string;
+  location: string;
+  posterUrl?: string;
   eventType: EventType;
 
   startDate: Date;
@@ -69,6 +81,11 @@ export interface IEvent extends Document {
   status: EventStatus;
 
   capabilities: EventCapabilities;
+
+  isCompetition: boolean;
+  isLeaderboardPublished: boolean;
+  scoringRules: IScoringRules;
+  limits: IEventLimits;
 
   registrationForm?: IRegistrationFormField[];
 
@@ -90,6 +107,17 @@ const eventSchema = new Schema<IEvent>(
     description: {
       type: String,
       required: true,
+      trim: true
+    },
+
+    location: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    posterUrl: {
+      type: String,
       trim: true
     },
 
@@ -144,6 +172,38 @@ const eventSchema = new Schema<IEvent>(
       realtime: { type: Boolean, default: false }
     },
 
+    isCompetition: {
+      type: Boolean,
+      default: false
+    },
+
+    isLeaderboardPublished: {
+      type: Boolean,
+      default: false
+    },
+
+    scoringRules: {
+      places: {
+        type: Map,
+        of: Number,
+        default: {}
+      },
+      grades: {
+        type: Map,
+        of: Number,
+        default: {}
+      }
+    },
+
+    limits: {
+      maxIndividualItemsPerParticipant: {
+        type: Number
+      },
+      maxGroupItemsPerParticipant: {
+        type: Number
+      }
+    },
+
     registrationForm: [{
       id: { type: String, required: true },
       label: { type: String, required: true },
@@ -163,3 +223,4 @@ const eventSchema = new Schema<IEvent>(
 );
 
 export const Event = mongoose.model<IEvent>("Event", eventSchema);
+

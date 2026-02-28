@@ -201,3 +201,21 @@ export const updateStatus = async (
     next(err);
   }
 };
+
+export const getEventLeaderboard = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const eventId = req.params.eventId as string;
+    const leaderboard = await participationService.getEventLeaderboard(eventId);
+
+    res.status(200).json({
+      success: true,
+      data: leaderboard
+    });
+  } catch (err) {
+    next(err);
+  }
+};

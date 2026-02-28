@@ -9,6 +9,11 @@ import { errorHandler } from "./middlewares/error.middleware";
 
 import userRoutes from "./modules/users/user.routes";
 import announcementRoutes from "./modules/announcements/announcement.routes";
+import competitionItemRoutes from "./modules/competitions/competitionItem.routes";
+import categoryRoutes from "./modules/competitions/category.routes";
+import resultRoutes from "./modules/competitions/result.routes";
+import teamRoutes from "./modules/competitions/team.routes";
+import entryRoutes from "./modules/competitions/entry.routes";
 
 
 const app = express();
@@ -33,7 +38,11 @@ app.use("/api/events", submissionRoutes);
 app.use("/api/participation", participationRoutes);
 app.use("/api/participations", participationRoutes);
 app.use('/api/announcements', announcementRoutes);
-
+app.use('/api/categories', categoryRoutes);
+app.use('/api/competition-items', competitionItemRoutes);
+app.use('/api/teams', teamRoutes);
+app.use('/api/results', resultRoutes);
+app.use('/api/entries', entryRoutes);
 
 app.use(errorHandler);
 
