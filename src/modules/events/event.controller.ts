@@ -146,50 +146,30 @@ export const getEvent = async (
 };
 
 
-export const listEvents = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
+export const listEvents = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const requester = req.user
-      ? { userId: req.user.userId, role: req.user.role }
-      : null;
-    const events = await eventService.listEvents(requester);
+    const requester = req.user ? { userId: req.user.userId, role: req.user.role } : null;
+    let filters: any = {};
 
     if (req.query.organizerId === "ME") {
-      if (!req.user) {
-        const error: any = new Error("Unauthorized: Login required");
-        error.statusCode = 401;
-        throw error;
-      }
-
-      const myEvents = events.filter((event) => event.createdBy === req.user!.userId);
-      res.status(200).json({ success: true, data: myEvents });
-      return;
+      if (!req.user) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+      filters.createdBy = new mongoose.Types.ObjectId(req.user.userId);
+      
+      const myEvents = await eventService.listEvents(requester, filters);
+      return res.status(200).json({ success: true, data: myEvents });
     }
 
-    const visibleStatuses = new Set<string>([
-      EventStatus.PUBLISHED,
-      EventStatus.REGISTRATION_OPEN,
-      "REGISTRATION_CLOSED",
-      EventStatus.ONGOING,
-      EventStatus.COMPLETED
-    ]);
+    filters.status = { 
+      $in: [EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, "REGISTRATION_CLOSED", EventStatus.ONGOING, EventStatus.COMPLETED] 
+    };
 
-    const filteredEvents = events.filter((event) => {
-      const isOwner = !!req.user && req.user.userId === event.createdBy.toString();
-      if (isOwner) {
-        return true;
-      }
-      return visibleStatuses.has(String(event.status));
-    });
-
+    const filteredEvents = await eventService.listEvents(requester, filters);
     res.status(200).json({ success: true, data: filteredEvents });
   } catch (err) {
     next(err);
   }
 };
+
 
 
 export const transitionEvent = async (
@@ -252,35 +232,57 @@ export const getEventAnalytics = async (
       throw error;
     }
 
-    // Analytics Logic...
-    const totalRegistrations = await Participation.countDocuments({
-      event: new mongoose.Types.ObjectId(eventId),
-      role: ParticipationRole.PARTICIPANT
-    });
-
-    const registrationsByDate = await Participation.aggregate([
-      {
-        $match: {
-          event: new mongoose.Types.ObjectId(eventId),
-          role: ParticipationRole.PARTICIPANT
+   // Analytics Logic...
+    // OPTIMIZATION: Use Promise.all to run all 4 database queries concurrently (no waterfall)
+    const [
+      totalRegistrations,
+      registrationsByDate,
+      submissionStats,
+      scoreAgg
+    ] = await Promise.all([
+      Participation.countDocuments({
+        event: new mongoose.Types.ObjectId(eventId),
+        role: ParticipationRole.PARTICIPANT
+      }),
+      Participation.aggregate([
+        {
+          $match: {
+            event: new mongoose.Types.ObjectId(eventId),
+            role: ParticipationRole.PARTICIPANT
+          }
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } },
+        { $project: { date: "$_id", count: 1, _id: 0 } }
+      ]),
+      Submission.aggregate([
+        { $match: { event: new mongoose.Types.ObjectId(eventId) } },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+        { $project: { status: "$_id", count: 1, _id: 0 } }
+      ]),
+      Submission.aggregate([
+        {
+          $match: {
+            event: new mongoose.Types.ObjectId(eventId),
+            "review.score": { $exists: true }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            averageScore: { $avg: "$review.score" },
+            reviewedCount: { $sum: 1 }
+          }
         }
-      },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } },
-      { $project: { date: "$_id", count: 1, _id: 0 } }
+      ])
     ]);
 
-    const submissionStats = await Submission.aggregate([
-      { $match: { event: new mongoose.Types.ObjectId(eventId) } },
-      { $group: { _id: "$status", count: { $sum: 1 } } },
-      { $project: { status: "$_id", count: 1, _id: 0 } }
-    ]);
-
+    // Synchronous calculations happen instantly after the concurrent DB calls finish
     const submissionsByStatus = submissionStats.reduce((acc: any, stat: any) => {
       acc[stat.status] = stat.count;
       return acc;
@@ -294,29 +296,13 @@ export const getEventAnalytics = async (
 
     const totalSubmissions = submissionStats.reduce((sum, stat) => sum + stat.count, 0);
 
-    const scoreAgg = await Submission.aggregate([
-      {
-        $match: {
-          event: new mongoose.Types.ObjectId(eventId),
-          "review.score": { $exists: true }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          averageScore: { $avg: "$review.score" },
-          reviewedCount: { $sum: 1 }
-        }
-      }
-    ]);
-
     const averageScore = scoreAgg.length > 0 ? Math.round(scoreAgg[0].averageScore * 10) / 10 : null;
     const reviewedCount = scoreAgg.length > 0 ? scoreAgg[0].reviewedCount : 0;
 
     const conversionRate = totalRegistrations > 0
       ? Math.round((totalSubmissions / totalRegistrations) * 100)
       : 0;
-
+      
     res.status(200).json({
       success: true,
       data: {

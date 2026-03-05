@@ -77,6 +77,11 @@ export interface IEvent extends Document {
 
   createdBy: mongoose.Types.ObjectId | string | IUser;
   isPublic: boolean;
+  
+  isPaid: boolean;
+  price: number;
+  totalSeats?: number;
+  availableSeats?: number;
 
   status: EventStatus;
 
@@ -154,6 +159,24 @@ const eventSchema = new Schema<IEvent>(
     isPublic: {
       type: Boolean,
       default: true
+    },
+
+    isPaid: {
+      type: Boolean,
+      default: false
+    },
+    price: {
+      type: Number,
+      default: 0,
+      min: [0, 'Price cannot be negative']
+    },
+    totalSeats: {
+      type: Number,
+      min: [1, 'Total seats must be at least 1 if specified']
+    },
+    availableSeats: {
+      type: Number,
+      min: [0, 'Event is sold out!']  
     },
 
     status: {

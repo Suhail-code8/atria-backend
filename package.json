@@ -7,7 +7,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "db:reset": "tsx src/scripts/reset-db.mts" 
+    "db:reset": "tsx src/scripts/reset-db.mts"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +28,7 @@
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^8.0.1",
+    "razorpay": "^2.9.6",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

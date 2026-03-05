@@ -5,12 +5,20 @@ import { roleMiddleware } from "../../middlewares/role.middleware";
 import { UserRole } from "../users/user.model";
 
 const router = Router();
-
-   
                                          
+router.post(
+  "/verify-payment",
+  authMiddleware, 
+  controller.verifyPayment
+);
    
+router.get(
+  "/me",
+  authMiddleware,
+  controller.getMyRegistrations
+);
 
-                                                                    
+
 router.post(
   "/:eventId/register",
   authMiddleware,
@@ -24,13 +32,6 @@ router.get(
   controller.getMyParticipation
 );
 
-                                                       
-router.get(
-  "/me",
-  authMiddleware,
-  controller.getMyRegistrations
-);
-
 router.get(
   "/event/:eventId/leaderboard",
   controller.getEventLeaderboard
@@ -42,10 +43,7 @@ router.post(
   authMiddleware,
   controller.withdrawFromEvent
 );
-
-   
-                        
-   
+               
 
                                                                
 router.get(

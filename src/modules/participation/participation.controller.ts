@@ -3,7 +3,7 @@ import * as participationService from "./participation.service";
 import { Participation } from "./participation.model";
 import { ParticipationStatus } from "./participation.model";
 import { sendEmail } from "../../utils/email.service";
-
+import crypto from "crypto";
    
                                         
                                      
@@ -214,6 +214,62 @@ export const getEventLeaderboard = async (
     res.status(200).json({
       success: true,
       data: leaderboard
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const verifyPayment = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      const error: any = new Error("Missing payment verification details");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // 1️⃣ Create the expected signature using your Secret Key
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
+    const generatedSignature = crypto
+      .createHmac("sha256", keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    // 2️⃣ Compare signatures to prevent hacking/spoofing
+    if (generatedSignature !== razorpay_signature) {
+      const error: any = new Error("Invalid payment signature. Payment rejected.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // 3️⃣ Signature is valid! Find the locked ticket
+    const participation = await Participation.findOne({ 
+      razorpayOrderId: razorpay_order_id 
+    });
+
+    if (!participation) {
+      const error: any = new Error("Ticket record not found for this order");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // 4️⃣ THE MAGIC: Make the seat permanent!
+    participation.status = ParticipationStatus.REGISTERED;
+    participation.lockedUntil = null; // Clear the 10-minute timer!
+    participation.razorpayPaymentId = razorpay_payment_id;
+
+    await participation.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Payment verified successfully! Seat is confirmed.",
+      data: participation
     });
   } catch (err) {
     next(err);

@@ -1,8 +1,19 @@
-import { Participation, IParticipation, ParticipationStatus, ParticipationRole } from "./participation.model";
+import {
+  Participation,
+  IParticipation,
+  ParticipationStatus,
+  ParticipationRole,
+} from "./participation.model";
 import { Event, EventStatus } from "../events/event.model";
 import { User, UserRole } from "../users/user.model";
 import { Team } from "../competitions/team.model";
 import mongoose from "mongoose";
+import Razorpay from "razorpay";
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || "",
+  key_secret: process.env.RAZORPAY_KEY_SECRET || "",
+});
 
 interface EventLeaderboardRow {
   userId: string;
@@ -12,23 +23,11 @@ interface EventLeaderboardRow {
   individualPoints: number;
 }
 
-   
-                          
-   
-          
-                     
-                                           
-                                                  
-                                                    
-                                                            
-                                                           
-   
 export const registerParticipant = async (
   eventId: string,
   userId: string,
-  answers?: Record<string, any>
+  answers?: Record<string, any>,
 ): Promise<IParticipation> => {
-                     
   if (!mongoose.Types.ObjectId.isValid(eventId)) {
     const error: any = new Error("Invalid event ID");
     error.statusCode = 400;
@@ -54,7 +53,6 @@ export const registerParticipant = async (
     throw error;
   }
 
-                         
   const event = await Event.findById(eventId);
   if (!event) {
     const error: any = new Error("Event not found");
@@ -62,10 +60,9 @@ export const registerParticipant = async (
     throw error;
   }
 
-                                               
   if (event.status !== EventStatus.REGISTRATION_OPEN) {
     const error: any = new Error(
-      `Event registration is not open. Current status: ${event.status}`
+      `Event registration is not open. Current status: ${event.status}`,
     );
     error.statusCode = 400;
     throw error;
@@ -81,14 +78,16 @@ export const registerParticipant = async (
   // 5️⃣ Current date must be within registration window
   const now = new Date();
   if (!event.registrationStartDate || !event.registrationEndDate) {
-    const error: any = new Error("Event registration window not properly configured");
+    const error: any = new Error(
+      "Event registration window not properly configured",
+    );
     error.statusCode = 400;
     throw error;
   }
 
   if (now < event.registrationStartDate) {
     const error: any = new Error(
-      `Registration has not started yet. Opens on ${event.registrationStartDate}`
+      `Registration has not started yet. Opens on ${event.registrationStartDate}`,
     );
     error.statusCode = 400;
     throw error;
@@ -96,7 +95,7 @@ export const registerParticipant = async (
 
   if (now > event.registrationEndDate) {
     const error: any = new Error(
-      `Registration has ended. Closed on ${event.registrationEndDate}`
+      `Registration has ended. Closed on ${event.registrationEndDate}`,
     );
     error.statusCode = 400;
     throw error;
@@ -115,7 +114,7 @@ export const registerParticipant = async (
 
     if (missingFields.length > 0) {
       const error: any = new Error(
-        `Missing required registration fields: ${missingFields.join(', ')}`
+        `Missing required registration fields: ${missingFields.join(", ")}`,
       );
       error.statusCode = 400;
       throw error;
@@ -123,14 +122,62 @@ export const registerParticipant = async (
   }
 
   // 7️⃣ Check for duplicate registration (Mongoose unique index will throw 11000)
+  // 7️⃣ Check for duplicate registration and handle Seat Locks & Payments
   try {
+    const hasSeatLimit = typeof event.totalSeats === "number";
+    let participationStatus = ParticipationStatus.REGISTERED;
+    let lockedUntil: Date | null = null;
+    let razorpayOrderId: string | undefined = undefined; // Track the order ID
+
+    if (hasSeatLimit) {
+      const activeSeatCount = await getActiveSeatCount(eventId);
+
+      if (activeSeatCount >= event.totalSeats) {
+        // Event is Full -> Join Waitlist (No Payment required yet)
+        participationStatus = ParticipationStatus.WAITLISTED;
+        lockedUntil = null;
+      } else if (event.isPaid) {
+        // Seats available + Event is Paid -> Lock Seat & Generate Payment
+        participationStatus = ParticipationStatus.PENDING_PAYMENT;
+        lockedUntil = new Date(Date.now() + 10 * 60 * 1000); // 10 min lock
+        
+        // --- 🚀 NEW: RAZORPAY ORDER GENERATION ---
+        const order = await razorpay.orders.create({
+          amount: Math.round(event.price * 100), // Razorpay expects paise (multiply by 100)
+          currency: "INR",
+          receipt: `rcpt_${userId}_${eventId}`.substring(0, 40),
+          notes: {
+            eventId: eventId,
+            userId: userId
+          }
+        });
+        razorpayOrderId = order.id;
+        // ------------------------------------------
+      }
+    } else if (event.isPaid) {
+      // No seat limit, but Event is Paid -> Generate Payment
+      participationStatus = ParticipationStatus.PENDING_PAYMENT;
+      lockedUntil = new Date(Date.now() + 10 * 60 * 1000); // Still give 10 min to pay
+      
+      // --- 🚀 NEW: RAZORPAY ORDER GENERATION ---
+      const order = await razorpay.orders.create({
+        amount: Math.round(event.price * 100),
+        currency: "INR",
+        receipt: `rcpt_${userId}_${eventId}`.substring(0, 40),
+      });
+      razorpayOrderId = order.id;
+      // ------------------------------------------
+    }
+
     const participation = await Participation.create({
       event: new mongoose.Types.ObjectId(eventId),
       user: new mongoose.Types.ObjectId(userId),
-      status: ParticipationStatus.REGISTERED,
+      status: participationStatus,
       role: ParticipationRole.PARTICIPANT,
       registeredAt: new Date(),
-      answers: answers || {}
+      answers: answers || {},
+      lockedUntil,
+      razorpayOrderId, // Save the generated Order ID to the database!
     });
 
     return participation.populate(["event", "user"]);
@@ -149,11 +196,11 @@ export const registerParticipant = async (
  */
 export const getParticipation = async (
   eventId: string,
-  userId: string
+  userId: string,
 ): Promise<IParticipation | null> => {
   const participation = await Participation.findOne({
     event: new mongoose.Types.ObjectId(eventId),
-    user: new mongoose.Types.ObjectId(userId)
+    user: new mongoose.Types.ObjectId(userId),
   }).populate(["event", "user"]);
 
   return participation;
@@ -162,7 +209,9 @@ export const getParticipation = async (
 /**
  * List all participants for an event (Organizer only)
  */
-export const listParticipants = async (eventId: string): Promise<IParticipation[]> => {
+export const listParticipants = async (
+  eventId: string,
+): Promise<IParticipation[]> => {
   if (!mongoose.Types.ObjectId.isValid(eventId)) {
     const error: any = new Error("Invalid event ID");
     error.statusCode = 400;
@@ -177,7 +226,7 @@ export const listParticipants = async (eventId: string): Promise<IParticipation[
   }
 
   const participants = await Participation.find({
-    event: new mongoose.Types.ObjectId(eventId)
+    event: new mongoose.Types.ObjectId(eventId),
   })
     .populate("user", "name email role")
     .sort({ registeredAt: -1 });
@@ -190,11 +239,11 @@ export const listParticipants = async (eventId: string): Promise<IParticipation[
  */
 export const withdrawParticipant = async (
   eventId: string,
-  userId: string
+  userId: string,
 ): Promise<IParticipation> => {
   const participation = await Participation.findOne({
     event: new mongoose.Types.ObjectId(eventId),
-    user: new mongoose.Types.ObjectId(userId)
+    user: new mongoose.Types.ObjectId(userId),
   });
 
   if (!participation) {
@@ -221,7 +270,7 @@ export const withdrawParticipant = async (
 export const updateParticipationStatus = async (
   participationId: string,
   newStatus: ParticipationStatus,
-  actorId: string
+  actorId: string,
 ): Promise<IParticipation> => {
   if (!mongoose.Types.ObjectId.isValid(participationId)) {
     const error: any = new Error("Invalid participation ID");
@@ -229,7 +278,8 @@ export const updateParticipationStatus = async (
     throw error;
   }
 
-  const participation = await Participation.findById(participationId).populate("event");
+  const participation =
+    await Participation.findById(participationId).populate("event");
 
   if (!participation) {
     const error: any = new Error("Participation record not found");
@@ -239,7 +289,9 @@ export const updateParticipationStatus = async (
 
   const event = participation.event as any;
   if (event.createdBy.toString() !== actorId) {
-    const error: any = new Error("Forbidden: Only event creator can update participation status");
+    const error: any = new Error(
+      "Forbidden: Only event creator can update participation status",
+    );
     error.statusCode = 403;
     throw error;
   }
@@ -251,7 +303,7 @@ export const updateParticipationStatus = async (
 };
 
 export const getEventLeaderboard = async (
-  eventId: string
+  eventId: string,
 ): Promise<EventLeaderboardRow[]> => {
   if (!mongoose.Types.ObjectId.isValid(eventId)) {
     const error: any = new Error("Invalid event ID");
@@ -265,19 +317,19 @@ export const getEventLeaderboard = async (
     {
       $match: {
         event: eventObjectId,
-        role: ParticipationRole.PARTICIPANT
-      }
+        role: ParticipationRole.PARTICIPANT,
+      },
     },
     {
       $lookup: {
         from: User.collection.name,
         localField: "user",
         foreignField: "_id",
-        as: "userDoc"
-      }
+        as: "userDoc",
+      },
     },
     {
-      $unwind: "$userDoc"
+      $unwind: "$userDoc",
     },
     {
       $lookup: {
@@ -286,25 +338,25 @@ export const getEventLeaderboard = async (
         pipeline: [
           {
             $match: {
-              event: eventObjectId
-            }
+              event: eventObjectId,
+            },
           },
           {
             $match: {
               $expr: {
-                $in: ["$$participantId", "$members.user"]
-              }
-            }
+                $in: ["$$participantId", "$members.user"],
+              },
+            },
           },
           {
             $project: {
               _id: 0,
-              name: 1
-            }
-          }
+              name: 1,
+            },
+          },
         ],
-        as: "teamDoc"
-      }
+        as: "teamDoc",
+      },
     },
     {
       $project: {
@@ -313,18 +365,40 @@ export const getEventLeaderboard = async (
         name: "$userDoc.name",
         email: "$userDoc.email",
         team: {
-          $ifNull: [{ $arrayElemAt: ["$teamDoc.name", 0] }, "Unassigned"]
+          $ifNull: [{ $arrayElemAt: ["$teamDoc.name", 0] }, "Unassigned"],
         },
-        individualPoints: { $ifNull: ["$individualPoints", 0] }
-      }
+        individualPoints: { $ifNull: ["$individualPoints", 0] },
+      },
     },
     {
       $sort: {
         individualPoints: -1,
-        name: 1
-      }
-    }
+        name: 1,
+      },
+    },
   ]);
 
   return leaderboard;
 };
+
+
+/**
+ * Smart Seat Calculator: Counts confirmed tickets + active locked carts
+ */
+export const getActiveSeatCount = async (eventId: string): Promise<number> => {
+  const activeCount = await Participation.countDocuments({
+    event: new mongoose.Types.ObjectId(eventId),
+    $or: [
+      // 1. Fully confirmed tickets
+      { status: { $in: [ParticipationStatus.REGISTERED, ParticipationStatus.APPROVED] } },
+      // 2. Pending tickets, BUT ONLY IF the lock timer hasn't expired yet
+      {
+        status: ParticipationStatus.PENDING_PAYMENT,
+        lockedUntil: { $gt: new Date() } 
+      }
+    ]
+  });
+  
+  return activeCount;
+};
+
