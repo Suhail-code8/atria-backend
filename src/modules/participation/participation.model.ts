@@ -2,28 +2,21 @@ import mongoose, { Schema, Document } from "mongoose";
 import { IUser } from "../users/user.model";
 import { IEvent } from "../events/event.model";
 
-   
-                          
-   
 export enum ParticipationRole {
   PARTICIPANT = "PARTICIPANT",
   JUDGE = "JUDGE",
   MENTOR = "MENTOR"
 }
 
-   
-                            
-   
 export enum ParticipationStatus {
-  REGISTERED = "REGISTERED",
+  PENDING_PAYMENT = "PENDING_PAYMENT", // <-- NEW: 10-minute lock for checkout
+  WAITLISTED = "WAITLISTED",           // <-- NEW: Zero-cost waitlist queue
+  REGISTERED = "REGISTERED",           // (Means Payment Confirmed for paid events)
   APPROVED = "APPROVED",
   REJECTED = "REJECTED",
   WITHDRAWN = "WITHDRAWN"
 }
 
-   
-                                   
-   
 export interface IParticipation extends Document {
   event: mongoose.Types.ObjectId | string | IEvent;
   user: mongoose.Types.ObjectId | string | IUser;
@@ -32,14 +25,18 @@ export interface IParticipation extends Document {
   individualPoints?: number;
   metadata?: Record<string, any>;
   answers?: Record<string, any>;
+  
+  // --- NEW SMART LOCK & PAYMENT FIELDS ---
+  lockedUntil?: Date | null;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  // ---------------------------------------
+
   registeredAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-   
-                       
-   
 const participationSchema = new Schema<IParticipation>(
   {
     event: {
@@ -82,6 +79,21 @@ const participationSchema = new Schema<IParticipation>(
       default: {}
     },
 
+    // --- NEW SMART LOCK & PAYMENT FIELDS ---
+    lockedUntil: {
+      type: Date,
+      default: null, // Null means permanent ticket/waitlist. Date means temporary hold.
+    },
+    razorpayOrderId: {
+      type: String,
+      trim: true
+    },
+    razorpayPaymentId: {
+      type: String,
+      trim: true
+    },
+    // ---------------------------------------
+
     registeredAt: {
       type: Date,
       default: () => new Date()
@@ -92,9 +104,6 @@ const participationSchema = new Schema<IParticipation>(
   }
 );
 
-   
-                                                                   
-   
 participationSchema.index({ event: 1, user: 1 }, { unique: true });
 
 export const Participation = mongoose.model<IParticipation>(

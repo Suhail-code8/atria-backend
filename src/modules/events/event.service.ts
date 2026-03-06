@@ -177,31 +177,63 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
     throw error;
   }
 
-  const allowed = [
+  // 1. Define allowed keys as a strict constant array
+  const allowedKeys = [
     "title",
     "description",
     "location",
     "eventType",
-    "startDate",
-    "endDate",
     "isPublic",
-    "registrationStartDate",
-    "registrationEndDate",
     "registrationForm",
     "isCompetition",
     "isLeaderboardPublished",
-    "scoringRules",
-    "limits"
-  ];
+  ] as const;
 
-                          
-  allowed.forEach((key) => {
-    if ((data as any)[key] !== undefined) {
-      (event as any)[key] = (data as any)[key];
+  // 2. The ES6 Way: Transform, filter, and reconstruct the object
+  const filteredUpdates = Object.fromEntries(
+    Object.entries(data).filter(([key, value]) => 
+      allowedKeys.includes(key as any) && value !== undefined
+    )
+  );
+
+  // 3. Apply the flat updates to the Mongoose document in one go
+  Object.assign(event, filteredUpdates);
+
+// 4. Safely merge nested objects and handle Mongoose Maps
+  if (data.scoringRules) {
+    // Initialize if it doesn't exist on the document yet
+    if (!event.scoringRules) {
+      // @ts-ignore - Bypass strict init check if Mongoose handles it gracefully
+      event.scoringRules = { places: new Map(), grades: new Map() };
     }
-  });
+    
+    // Convert plain JS objects (Records) from the frontend into proper Maps
+    if (data.scoringRules.places) {
+      event.scoringRules.places = new Map(
+        data.scoringRules.places instanceof Map 
+          ? data.scoringRules.places 
+          : Object.entries(data.scoringRules.places)
+      );
+    }
+    
+    if (data.scoringRules.grades) {
+      event.scoringRules.grades = new Map(
+        data.scoringRules.grades instanceof Map 
+          ? data.scoringRules.grades 
+          : Object.entries(data.scoringRules.grades)
+      );
+    }
+  }
 
-                                          
+  // Keep limits and capabilities exactly as they were:
+  if (data.limits) {
+    event.limits = { ...event.limits, ...data.limits };
+  }
+  if (data.capabilities) {
+    event.capabilities = { ...event.capabilities, ...data.capabilities };
+  }
+
+  // 5. Handle Event Dates safely
   if (data.startDate || data.endDate) {
     const startDate = data.startDate ? new Date(data.startDate as any) : event.startDate;
     const endDate = data.endDate ? new Date(data.endDate as any) : event.endDate;
@@ -212,16 +244,26 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
       throw error;
     }
     
-    if (data.startDate) event.startDate = startDate;
-    if (data.endDate) event.endDate = endDate;
+    event.startDate = startDate;
+    event.endDate = endDate;
   }
 
-                                           
-  if (data.capabilities) {
-    event.capabilities = {
-      ...event.capabilities,
-      ...data.capabilities
-    };
+  // 6. Handle Registration Dates safely
+  if (data.registrationStartDate || data.registrationEndDate) {
+    const currentRegStart = event.registrationStartDate ? new Date(event.registrationStartDate) : undefined;
+    const currentRegEnd = event.registrationEndDate ? new Date(event.registrationEndDate) : undefined;
+
+    const regStart = data.registrationStartDate ? new Date(data.registrationStartDate as any) : currentRegStart;
+    const regEnd = data.registrationEndDate ? new Date(data.registrationEndDate as any) : currentRegEnd;
+
+    if (regStart && regEnd && regEnd <= regStart) {
+      const error: any = new Error("Registration end date must be after registration start date");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (regStart) event.registrationStartDate = regStart;
+    if (regEnd) event.registrationEndDate = regEnd;
   }
 
   await event.save();
@@ -288,21 +330,24 @@ export const getEventById = async (eventId: string, requesterUserId?: string) =>
   return sanitizeEvent(event);
 };
 
-export const listEvents = async (requester?: { userId: string; role: string } | null) => {
+
+export const listEvents = async (
+  requester?: { userId: string; role: string } | null,
+  filters: any = {}
+) => {
+  let query: any = { ...filters };
+
   if (!requester) {
-                     
-    const events = await Event.find({ isPublic: true }).sort({ startDate: -1 });
-    return events.map(sanitizeEvent);
-  }
-
-                           
-  if (requester.role === "ORGANIZER") {
+    query.isPublic = true;
+  } else if (requester.role === "ORGANIZER") {
     const mongooseId = new mongoose.Types.ObjectId(requester.userId);
-    const events = await Event.find({ $or: [{ isPublic: true }, { createdBy: mongooseId }] }).sort({ startDate: -1 });
-    return events.map(sanitizeEvent);
+    query.$or = [{ isPublic: true }, { createdBy: mongooseId }];
+  } else {
+    query.isPublic = true;
   }
 
-                                                     
-  const events = await Event.find({ isPublic: true }).sort({ startDate: -1 });
-  return events.map(sanitizeEvent);
+  // .lean() to return pure JSON instead of heavy Mongoose documents
+  const events = await Event.find(query).sort({ startDate: -1 }).lean();
+  
+  return (events as unknown as IEvent[]).map(sanitizeEvent); 
 };
