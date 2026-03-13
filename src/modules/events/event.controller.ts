@@ -27,6 +27,9 @@ export const createEvent = async (
       startDate,
       endDate,
       isPublic,
+      isPaid,
+      price,
+      totalSeats,
       registrationStartDate,
       registrationEndDate,
       capabilities,
@@ -44,6 +47,9 @@ export const createEvent = async (
       startDate,
       endDate,
       isPublic,
+      isPaid,
+      price,
+      totalSeats,
       registrationStartDate,
       registrationEndDate,
       capabilities,
@@ -76,6 +82,9 @@ export const updateEvent = async (
       startDate,
       endDate,
       isPublic,
+      isPaid,
+      price,
+      totalSeats,
       registrationStartDate,
       registrationEndDate,
       registrationForm,
@@ -96,6 +105,9 @@ export const updateEvent = async (
         startDate,
         endDate,
         isPublic,
+        isPaid,
+        price,
+        totalSeats,
         registrationStartDate,
         registrationEndDate,
         registrationForm,
@@ -138,8 +150,39 @@ export const getEvent = async (
   try {
     const eventId = req.params.eventId as string;
     const requesterUserId = req.user?.userId as string | undefined;
-    const event = await eventService.getEventById(eventId, requesterUserId);
+    const accessCode = req.query.code as string | undefined;
+    const event = await eventService.getEventById(eventId, requesterUserId, accessCode);
     res.status(200).json({ success: true, data: event });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getAccessCode = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId as string;
+    const eventId = req.params.eventId as string;
+    const result = await eventService.getEventAccessCode(eventId, userId);
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const regenerateAccessCode = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.userId as string;
+    const eventId = req.params.eventId as string;
+    const result = await eventService.regenerateAccessCode(eventId, userId);
+    res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
   }
@@ -327,6 +370,7 @@ export const generateEventPoster = async (
 ) => {
   try {
     const eventId = req.params.eventId as string;
+    const userId = req.user?.userId as string;
 
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
       const error: any = new Error("Invalid event ID");
@@ -338,6 +382,12 @@ export const generateEventPoster = async (
     if (!event) {
       const error: any = new Error("Event not found");
       error.statusCode = 404;
+      throw error;
+    }
+
+    if (event.createdBy.toString() !== userId) {
+      const error: any = new Error("Forbidden: Only event creator can generate posters");
+      error.statusCode = 403;
       throw error;
     }
 

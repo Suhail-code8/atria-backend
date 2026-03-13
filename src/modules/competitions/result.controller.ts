@@ -7,6 +7,7 @@ export const addResult = async (
   next: NextFunction
 ) => {
   try {
+    const actorUserId = req.user?.userId as string;
     const {
       eventId,
       itemId,
@@ -33,6 +34,7 @@ export const addResult = async (
 
     const result = await resultService.addResult({
       eventId,
+      actorUserId,
       itemId,
       teamId,
       entryId,

@@ -101,9 +101,27 @@ const ensureValidObjectId = (id: string, label: string): void => {
   }
 };
 
+const ensureEventCreator = async (eventId: string, actorUserId: string): Promise<void> => {
+  ensureValidObjectId(actorUserId, "user ID");
+
+  const event = await Event.findById(eventId).select("createdBy");
+  if (!event) {
+    const error: any = new Error("Event not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (event.createdBy.toString() !== actorUserId) {
+    const error: any = new Error("Forbidden: Only event creator can manage competition items");
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
 export const createItem = async (
   eventId: string,
-  data: CreateCompetitionItemInput
+  data: CreateCompetitionItemInput,
+  actorUserId: string
 ): Promise<ICompetitionItem> => {
   ensureValidObjectId(eventId, "event ID");
 
@@ -119,12 +137,7 @@ export const createItem = async (
     throw error;
   }
 
-  const event = await Event.findById(eventId);
-  if (!event) {
-    const error: any = new Error("Event not found");
-    error.statusCode = 404;
-    throw error;
-  }
+  await ensureEventCreator(eventId, actorUserId);
 
   const allowedCategoryObjectIds = await resolveAllowedCategories(eventId, data.allowedCategories);
 
@@ -161,7 +174,7 @@ export const getEventItems = async (eventId: string): Promise<ICompetitionItem[]
   return items;
 };
 
-export const deleteItem = async (itemId: string): Promise<{ deleted: true }> => {
+export const deleteItem = async (itemId: string, actorUserId: string): Promise<{ deleted: true }> => {
   ensureValidObjectId(itemId, "item ID");
 
   const item = await CompetitionItem.findById(itemId);
@@ -172,6 +185,13 @@ export const deleteItem = async (itemId: string): Promise<{ deleted: true }> => 
     throw error;
   }
 
+  const eventId =
+    typeof item.event === "string"
+      ? item.event
+      : (item.event as mongoose.Types.ObjectId).toString();
+
+  await ensureEventCreator(eventId, actorUserId);
+
   await item.deleteOne();
 
   return { deleted: true };
@@ -179,7 +199,8 @@ export const deleteItem = async (itemId: string): Promise<{ deleted: true }> => 
 
 export const updateItem = async (
   itemId: string,
-  data: UpdateCompetitionItemInput
+  data: UpdateCompetitionItemInput,
+  actorUserId: string
 ): Promise<ICompetitionItem> => {
   ensureValidObjectId(itemId, "item ID");
 
@@ -190,6 +211,21 @@ export const updateItem = async (
     error.statusCode = 404;
     throw error;
   }
+
+  const itemEventId =
+    typeof item.event === "string"
+      ? item.event
+      : item.event instanceof mongoose.Types.ObjectId
+      ? item.event.toString()
+      : item.event?._id?.toString();
+
+  if (!itemEventId) {
+    const error: any = new Error("Item event context not found");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await ensureEventCreator(itemEventId, actorUserId);
 
   if (data.name !== undefined) {
     if (!data.name.trim()) {
@@ -210,20 +246,7 @@ export const updateItem = async (
   }
 
   if (data.allowedCategories !== undefined) {
-    const eventId =
-      typeof item.event === "string"
-        ? item.event
-        : item.event instanceof mongoose.Types.ObjectId
-        ? item.event.toString()
-        : item.event?._id?.toString();
-
-    if (!eventId) {
-      const error: any = new Error("Item event context not found");
-      error.statusCode = 400;
-      throw error;
-    }
-
-    item.allowedCategories = await resolveAllowedCategories(eventId, data.allowedCategories);
+    item.allowedCategories = await resolveAllowedCategories(itemEventId, data.allowedCategories);
   }
 
   if (data.minParticipantsPerTeam !== undefined) {

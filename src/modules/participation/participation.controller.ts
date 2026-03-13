@@ -24,23 +24,31 @@ export const registerForEvent = async (
       answers
     );
 
-    const participantUser = (participation as any).user;
-    const participantEvent = (participation as any).event;
-    const recipientEmail = participantUser?.email as string | undefined;
-    const eventTitle = (participantEvent?.title as string | undefined) || "your event";
+    // Only send confirmation email for free events that are immediately REGISTERED.
+    // For paid events (PENDING_PAYMENT), the email fires inside verifyPayment after payment confirmation.
+    if (participation.status === ParticipationStatus.REGISTERED) {
+      const participantUser = (participation as any).user;
+      const participantEvent = (participation as any).event;
+      const recipientEmail = participantUser?.email as string | undefined;
+      const eventTitle = (participantEvent?.title as string | undefined) || "your event";
 
-    if (recipientEmail) {
-      await sendEmail(
-        recipientEmail,
-        `Registration Confirmed: ${eventTitle}`,
-        `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #2563eb; margin-bottom: 16px;">You are in!</h1>
-            <p style="font-size: 16px; color: #374151;">Thanks for registering for <strong>${eventTitle}</strong>.</p>
-            <p style="font-size: 14px; color: #6b7280; margin-top: 20px;">Team Atria</p>
-          </div>
-        `
-      );
+      if (recipientEmail) {
+        try {
+          await sendEmail(
+            recipientEmail,
+            `Registration Confirmed: ${eventTitle}`,
+            `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #2563eb; margin-bottom: 16px;">You are in!</h1>
+                <p style="font-size: 16px; color: #374151;">Thanks for registering for <strong>${eventTitle}</strong>.</p>
+                <p style="font-size: 14px; color: #6b7280; margin-top: 20px;">Team Atria</p>
+              </div>
+            `
+          );
+        } catch {
+          // Email failure must not break the registration response
+        }
+      }
     }
 
     res.status(201).json({
@@ -209,7 +217,8 @@ export const getEventLeaderboard = async (
 ) => {
   try {
     const eventId = req.params.eventId as string;
-    const leaderboard = await participationService.getEventLeaderboard(eventId);
+    const requesterUserId = req.user?.userId as string | undefined;
+    const leaderboard = await participationService.getEventLeaderboard(eventId, requesterUserId);
 
     res.status(200).json({
       success: true,
@@ -241,8 +250,14 @@ export const verifyPayment = async (
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    // 2️⃣ Compare signatures to prevent hacking/spoofing
-    if (generatedSignature !== razorpay_signature) {
+    // 2️⃣ Compare signatures using constant-time comparison to prevent timing attacks
+    const generatedBuf = Buffer.from(generatedSignature, 'hex');
+    const receivedBuf = Buffer.from(razorpay_signature, 'hex');
+    const signaturesMatch =
+      generatedBuf.length === receivedBuf.length &&
+      crypto.timingSafeEqual(generatedBuf, receivedBuf);
+
+    if (!signaturesMatch) {
       const error: any = new Error("Invalid payment signature. Payment rejected.");
       error.statusCode = 400;
       throw error;
@@ -259,17 +274,102 @@ export const verifyPayment = async (
       throw error;
     }
 
-    // 4️⃣ THE MAGIC: Make the seat permanent!
+    // 4️⃣ Ensure the requesting user owns this participation (prevents cross-user replay)
+    if (participation.user.toString() !== req.user!.userId) {
+      const error: any = new Error("Forbidden: This order does not belong to your account");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // Idempotency guard: if already verified, return the existing confirmed record
+    if (participation.status === ParticipationStatus.REGISTERED) {
+      await participation.populate(["event", "user"]);
+      return res.status(200).json({
+        success: true,
+        message: "Payment already verified.",
+        data: participation
+      });
+    }
+
+    // 5️⃣ THE MAGIC: Make the seat permanent!
     participation.status = ParticipationStatus.REGISTERED;
     participation.lockedUntil = null; // Clear the 10-minute timer!
     participation.razorpayPaymentId = razorpay_payment_id;
 
     await participation.save();
 
+    // 6️⃣ Populate before sending response AND before reading email fields
+    await participation.populate(["event", "user"]);
+
+    // 7️⃣ Send the confirmation email NOW that payment is actually confirmed
+    const participantUser = (participation as any).user;
+    const participantEvent = (participation as any).event;
+    const recipientEmail = participantUser?.email as string | undefined;
+    const eventTitle = (participantEvent?.title as string | undefined) || "your event";
+
+    if (recipientEmail) {
+      try {
+        await sendEmail(
+          recipientEmail,
+          `Registration Confirmed: ${eventTitle}`,
+          `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h1 style="color: #2563eb; margin-bottom: 16px;">You are in!</h1>
+              <p style="font-size: 16px; color: #374151;">Thanks for registering for <strong>${eventTitle}</strong>.</p>
+              <p style="font-size: 14px; color: #6b7280; margin-top: 20px;">Team Atria</p>
+            </div>
+          `
+        );
+      } catch {
+        // Email failure must not block the payment confirmation response
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: "Payment verified successfully! Seat is confirmed.",
       data: participation
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getPaymentStatus = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const eventId = req.params.eventId as string;
+    const userId = req.user!.userId;
+
+    const participation = await participationService.getPaymentStatus(eventId, userId);
+
+    res.status(200).json({
+      success: true,
+      data: participation,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const retryPayment = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const eventId = req.params.eventId as string;
+    const userId = req.user!.userId;
+
+    const participation = await participationService.retryPaymentForParticipation(eventId, userId);
+
+    res.status(200).json({
+      success: true,
+      message: "Payment session prepared",
+      data: participation,
     });
   } catch (err) {
     next(err);

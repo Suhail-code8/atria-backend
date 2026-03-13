@@ -70,9 +70,11 @@ const getNameFromEmail = (email: string): string => {
 export const createTeam = async (
   eventId: string,
   name: string,
-  managerEmail: string
+  managerEmail: string,
+  actorUserId: string
 ): Promise<ITeam> => {
   ensureValidObjectId(eventId, "event ID");
+  ensureValidObjectId(actorUserId, "user ID");
 
   if (!name?.trim()) {
     const error: any = new Error("Team name is required");
@@ -92,6 +94,12 @@ export const createTeam = async (
   if (!event) {
     const error: any = new Error("Event not found");
     error.statusCode = 404;
+    throw error;
+  }
+
+  if (event.createdBy.toString() !== actorUserId) {
+    const error: any = new Error("Forbidden: Only event creator can create teams");
+    error.statusCode = 403;
     throw error;
   }
 

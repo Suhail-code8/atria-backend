@@ -33,6 +33,7 @@ export const createTeam = async (
 ) => {
   try {
     const eventId = getEventIdFromRequest(req);
+    const actorUserId = req.user?.userId as string;
     const { name, managerEmail } = req.body as { name?: string; managerEmail?: string };
 
     if (!managerEmail) {
@@ -41,7 +42,7 @@ export const createTeam = async (
       throw error;
     }
 
-    const team = await teamService.createTeam(eventId, name || "", managerEmail);
+    const team = await teamService.createTeam(eventId, name || "", managerEmail, actorUserId);
 
     res.status(201).json({ success: true, data: team });
   } catch (err) {

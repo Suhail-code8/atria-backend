@@ -8,6 +8,7 @@ import { User } from "../users/user.model";
 
 interface AddResultInput {
   eventId: string;
+  actorUserId: string;
   itemId: string;
   teamId?: string;
   entryId?: string;
@@ -73,6 +74,7 @@ const getPointsForGrade = (
 
 export const addResult = async ({
   eventId,
+  actorUserId,
   itemId,
   teamId,
   entryId,
@@ -81,6 +83,7 @@ export const addResult = async ({
   grade
 }: AddResultInput): Promise<IResult> => {
   ensureValidObjectId(eventId, "event ID");
+  ensureValidObjectId(actorUserId, "user ID");
   ensureValidObjectId(itemId, "item ID");
   if (teamId) {
     ensureValidObjectId(teamId, "team ID");
@@ -101,6 +104,12 @@ export const addResult = async ({
   if (!event) {
     const error: any = new Error("Event not found");
     error.statusCode = 404;
+    throw error;
+  }
+
+  if (event.createdBy.toString() !== actorUserId) {
+    const error: any = new Error("Forbidden: Only event creator can add results");
+    error.statusCode = 403;
     throw error;
   }
 

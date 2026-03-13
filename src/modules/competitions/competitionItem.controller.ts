@@ -20,6 +20,7 @@ export const createItem = async (
 ) => {
   try {
     const eventId = getEventIdFromRequest(req);
+    const actorUserId = req.user?.userId as string;
 
     const {
       name,
@@ -41,7 +42,7 @@ export const createItem = async (
       maxTotalParticipants,
       placePoints,
       gradePoints
-    });
+    }, actorUserId);
 
     res.status(201).json({ success: true, data: item });
   } catch (err) {
@@ -56,6 +57,7 @@ export const updateItem = async (
 ) => {
   try {
     const itemId = req.params.id as string;
+    const actorUserId = req.user?.userId as string;
 
     const {
       name,
@@ -77,7 +79,7 @@ export const updateItem = async (
       maxTotalParticipants,
       placePoints,
       gradePoints
-    });
+    }, actorUserId);
 
     res.status(200).json({ success: true, data: item });
   } catch (err) {
@@ -108,8 +110,9 @@ export const deleteItem = async (
 ) => {
   try {
     const itemId = req.params.id as string;
+    const actorUserId = req.user?.userId as string;
 
-    const result = await competitionItemService.deleteItem(itemId);
+    const result = await competitionItemService.deleteItem(itemId, actorUserId);
 
     res.status(200).json({ success: true, data: result });
   } catch (err) {

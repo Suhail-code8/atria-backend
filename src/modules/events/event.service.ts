@@ -1,5 +1,8 @@
 import { Event, IEvent, EventStatus } from "./event.model";
 import mongoose from "mongoose";
+import crypto from "crypto";
+
+const generateAccessCode = () => crypto.randomBytes(16).toString("hex");
 
 interface CreateEventInput {
   title: string;
@@ -22,6 +25,9 @@ interface CreateEventInput {
   registrationEndDate?: Date | string;
   registrationForm?: any[];
   isPublic?: boolean;
+  isPaid?: boolean;
+  price?: number;
+  totalSeats?: number;
   capabilities?: {
     registration?: boolean;
     submissions?: boolean;
@@ -34,7 +40,7 @@ interface CreateEventInput {
   };
 }
 
-export const sanitizeEvent = (event: IEvent) => {
+export const sanitizeEvent = (event: IEvent, isOwner = false) => {
   return {
     _id: event._id.toString(),
     title: event.title,
@@ -48,6 +54,10 @@ export const sanitizeEvent = (event: IEvent) => {
     registrationEndDate: event.registrationEndDate,
     createdBy: event.createdBy?.toString(),
     isPublic: event.isPublic,
+    isPaid: event.isPaid,
+    price: event.price,
+    totalSeats: event.totalSeats,
+    availableSeats: event.availableSeats,
     isCompetition: event.isCompetition,
     isLeaderboardPublished: event.isLeaderboardPublished,
     scoringRules: event.scoringRules,
@@ -55,6 +65,7 @@ export const sanitizeEvent = (event: IEvent) => {
     status: event.status,
     registrationForm: event.registrationForm || [],
     capabilities: event.capabilities,
+    ...(isOwner && !event.isPublic ? { accessCode: event.accessCode } : {}),
     createdAt: event.createdAt,
     updatedAt: event.updatedAt
   };
@@ -150,11 +161,17 @@ export const createEvent = async (data: CreateEventInput, userId: string) => {
     limits: data.limits,
     createdBy: new mongoose.Types.ObjectId(userId),
     isPublic: data.isPublic ?? true,
+    isPaid: data.isPaid ?? false,
+    price: data.isPaid ? (data.price ?? 0) : 0,
+    totalSeats: data.totalSeats,
+    availableSeats: data.totalSeats,
+    accessCode: (data.isPublic === false) ? generateAccessCode() : undefined,
     status: EventStatus.DRAFT,
     capabilities
   });
 
-  return sanitizeEvent(event);
+  const isOwner = true;
+  return sanitizeEvent(event, isOwner);
 };
 
 export const updateEvent = async (eventId: string, data: Partial<CreateEventInput>, userId: string) => {
@@ -184,6 +201,9 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
     "location",
     "eventType",
     "isPublic",
+    "isPaid",
+    "price",
+    "totalSeats",
     "registrationForm",
     "isCompetition",
     "isLeaderboardPublished",
@@ -198,6 +218,24 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
 
   // 3. Apply the flat updates to the Mongoose document in one go
   Object.assign(event, filteredUpdates);
+
+  // Sync availableSeats when totalSeats changes
+  if (data.totalSeats !== undefined) {
+    const registered = (event.totalSeats ?? 0) - (event.availableSeats ?? 0);
+    event.availableSeats = Math.max(0, data.totalSeats - registered);
+  }
+  // Clear price when switching to free
+  if (data.isPaid === false) {
+    event.price = 0;
+  }
+  // Generate access code when switching to private (if one doesn't exist)
+  if (data.isPublic === false && !event.accessCode) {
+    event.accessCode = generateAccessCode();
+  }
+  // Clear access code when switching back to public
+  if (data.isPublic === true) {
+    event.accessCode = undefined;
+  }
 
 // 4. Safely merge nested objects and handle Mongoose Maps
   if (data.scoringRules) {
@@ -268,7 +306,8 @@ export const updateEvent = async (eventId: string, data: Partial<CreateEventInpu
 
   await event.save();
 
-  return sanitizeEvent(event);
+  const isOwner = true;
+  return sanitizeEvent(event, isOwner);
 };
 
 export const deleteEvent = async (eventId: string, userId: string) => {
@@ -299,7 +338,7 @@ export const deleteEvent = async (eventId: string, userId: string) => {
   return sanitizeEvent(event);
 };
 
-export const getEventById = async (eventId: string, requesterUserId?: string) => {
+export const getEventById = async (eventId: string, requesterUserId?: string, accessCode?: string) => {
   if (!mongoose.Types.ObjectId.isValid(eventId)) {
     const error: any = new Error("Invalid event ID");
     error.statusCode = 400;
@@ -313,21 +352,67 @@ export const getEventById = async (eventId: string, requesterUserId?: string) =>
     throw error;
   }
 
-                               
+  const isOwner = !!requesterUserId && event.createdBy.toString() === requesterUserId;
+
   if (!event.isPublic) {
-    if (!requesterUserId) {
+    if (isOwner) {
+      // creator always has access
+    } else if (accessCode && event.accessCode && accessCode === event.accessCode) {
+      // valid invite code — allow read-only access
+    } else if (!requesterUserId) {
       const error: any = new Error("Unauthorized: Event is private");
       error.statusCode = 401;
       throw error;
-    }
-    if (event.createdBy.toString() !== requesterUserId) {
+    } else {
       const error: any = new Error("Forbidden: Access denied to private event");
       error.statusCode = 403;
       throw error;
     }
   }
 
-  return sanitizeEvent(event);
+  return sanitizeEvent(event, isOwner);
+};
+
+export const getEventAccessCode = async (eventId: string, userId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+  const event = await Event.findById(eventId);
+  if (!event) {
+    const error: any = new Error("Event not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (event.createdBy.toString() !== userId) {
+    const error: any = new Error("Forbidden");
+    error.statusCode = 403;
+    throw error;
+  }
+  return { accessCode: event.accessCode ?? null };
+};
+
+export const regenerateAccessCode = async (eventId: string, userId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+  const event = await Event.findById(eventId);
+  if (!event) {
+    const error: any = new Error("Event not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (event.createdBy.toString() !== userId) {
+    const error: any = new Error("Forbidden");
+    error.statusCode = 403;
+    throw error;
+  }
+  event.accessCode = generateAccessCode();
+  await event.save();
+  return { accessCode: event.accessCode };
 };
 
 
@@ -349,5 +434,5 @@ export const listEvents = async (
   // .lean() to return pure JSON instead of heavy Mongoose documents
   const events = await Event.find(query).sort({ startDate: -1 }).lean();
   
-  return (events as unknown as IEvent[]).map(sanitizeEvent); 
+  return (events as unknown as IEvent[]).map((e) => sanitizeEvent(e)); 
 };

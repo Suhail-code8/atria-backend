@@ -20,8 +20,9 @@ export const createCategory = async (
 ) => {
   try {
     const eventId = getEventIdFromRequest(req);
+    const actorUserId = req.user?.userId as string;
 
-    const category = await categoryService.createCategory(eventId, req.body);
+    const category = await categoryService.createCategory(eventId, req.body, actorUserId);
 
     res.status(201).json({ success: true, data: category });
   } catch (err) {
@@ -52,8 +53,9 @@ export const deleteCategory = async (
 ) => {
   try {
     const categoryId = req.params.id as string;
+    const actorUserId = req.user?.userId as string;
 
-    const result = await categoryService.deleteCategory(categoryId);
+    const result = await categoryService.deleteCategory(categoryId, actorUserId);
 
     res.status(200).json({ success: true, data: result });
   } catch (err) {

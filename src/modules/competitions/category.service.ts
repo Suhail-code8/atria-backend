@@ -15,9 +15,27 @@ const ensureValidObjectId = (id: string, label: string): void => {
   }
 };
 
+const ensureEventCreator = async (eventId: string, actorUserId: string): Promise<void> => {
+  ensureValidObjectId(actorUserId, "user ID");
+
+  const event = await Event.findById(eventId).select("createdBy");
+  if (!event) {
+    const error: any = new Error("Event not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (event.createdBy.toString() !== actorUserId) {
+    const error: any = new Error("Forbidden: Only event creator can manage categories");
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
 export const createCategory = async (
   eventId: string,
-  data: CreateCategoryInput
+  data: CreateCategoryInput,
+  actorUserId: string
 ): Promise<ICategory> => {
   ensureValidObjectId(eventId, "event ID");
 
@@ -27,12 +45,7 @@ export const createCategory = async (
     throw error;
   }
 
-  const event = await Event.findById(eventId);
-  if (!event) {
-    const error: any = new Error("Event not found");
-    error.statusCode = 404;
-    throw error;
-  }
+  await ensureEventCreator(eventId, actorUserId);
 
   const category = await Category.create({
     event: new mongoose.Types.ObjectId(eventId),
@@ -54,7 +67,8 @@ export const getEventCategories = async (eventId: string): Promise<ICategory[]> 
 };
 
 export const deleteCategory = async (
-  categoryId: string
+  categoryId: string,
+  actorUserId: string
 ): Promise<{ deleted: true }> => {
   ensureValidObjectId(categoryId, "category ID");
 
@@ -65,6 +79,13 @@ export const deleteCategory = async (
     error.statusCode = 404;
     throw error;
   }
+
+  const eventId =
+    typeof category.event === "string"
+      ? category.event
+      : (category.event as mongoose.Types.ObjectId).toString();
+
+  await ensureEventCreator(eventId, actorUserId);
 
   await category.deleteOne();
 

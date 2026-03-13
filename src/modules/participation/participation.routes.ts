@@ -1,6 +1,6 @@
 import { Router } from "express";
 import * as controller from "./participation.controller";
-import { authMiddleware } from "../../middlewares/auth.middleware";
+import { authMiddleware, optionalAuthMiddleware } from "../../middlewares/auth.middleware";
 import { roleMiddleware } from "../../middlewares/role.middleware";
 import { UserRole } from "../users/user.model";
 
@@ -10,6 +10,18 @@ router.post(
   "/verify-payment",
   authMiddleware, 
   controller.verifyPayment
+);
+
+router.get(
+  "/:eventId/payment-status",
+  authMiddleware,
+  controller.getPaymentStatus
+);
+
+router.post(
+  "/:eventId/retry-payment",
+  authMiddleware,
+  controller.retryPayment
 );
    
 router.get(
@@ -34,6 +46,7 @@ router.get(
 
 router.get(
   "/event/:eventId/leaderboard",
+  optionalAuthMiddleware,
   controller.getEventLeaderboard
 );
 

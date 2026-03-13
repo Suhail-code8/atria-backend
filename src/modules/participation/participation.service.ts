@@ -18,10 +18,22 @@ const razorpay = new Razorpay({
 interface EventLeaderboardRow {
   userId: string;
   name: string;
-  email: string;
+  email?: string;
   team: string;
   individualPoints: number;
 }
+
+const createRazorpayOrder = async (eventId: string, userId: string, price: number) => {
+  return razorpay.orders.create({
+    amount: Math.round(price * 100),
+    currency: "INR",
+    receipt: `rcpt_${userId}_${eventId}_${Date.now()}`.substring(0, 40),
+    notes: {
+      eventId,
+      userId,
+    },
+  });
+};
 
 export const registerParticipant = async (
   eventId: string,
@@ -304,12 +316,23 @@ export const updateParticipationStatus = async (
 
 export const getEventLeaderboard = async (
   eventId: string,
+  requesterUserId?: string,
 ): Promise<EventLeaderboardRow[]> => {
   if (!mongoose.Types.ObjectId.isValid(eventId)) {
     const error: any = new Error("Invalid event ID");
     error.statusCode = 400;
     throw error;
   }
+
+  const event = await Event.findById(eventId).select("createdBy");
+  if (!event) {
+    const error: any = new Error("Event not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const canViewParticipantEmail =
+    Boolean(requesterUserId) && event.createdBy.toString() === requesterUserId;
 
   const eventObjectId = new mongoose.Types.ObjectId(eventId);
 
@@ -378,7 +401,118 @@ export const getEventLeaderboard = async (
     },
   ]);
 
+  if (!canViewParticipantEmail) {
+    return leaderboard.map(({ email, ...row }) => row);
+  }
+
   return leaderboard;
+};
+
+export const getPaymentStatus = async (
+  eventId: string,
+  userId: string,
+): Promise<IParticipation> => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    const error: any = new Error("Invalid user ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const participation = await Participation.findOne({
+    event: new mongoose.Types.ObjectId(eventId),
+    user: new mongoose.Types.ObjectId(userId),
+  });
+
+  if (!participation) {
+    const error: any = new Error("Participation record not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return participation.populate(["event", "user"]);
+};
+
+export const retryPaymentForParticipation = async (
+  eventId: string,
+  userId: string,
+): Promise<IParticipation> => {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    const error: any = new Error("Invalid event ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    const error: any = new Error("Invalid user ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const [event, participation] = await Promise.all([
+    Event.findById(eventId),
+    Participation.findOne({
+      event: new mongoose.Types.ObjectId(eventId),
+      user: new mongoose.Types.ObjectId(userId),
+    }),
+  ]);
+
+  if (!event) {
+    const error: any = new Error("Event not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!event.isPaid) {
+    const error: any = new Error("This is a free event and does not require payment");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!participation) {
+    const error: any = new Error("Participation record not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (
+    participation.status === ParticipationStatus.REGISTERED ||
+    participation.status === ParticipationStatus.APPROVED
+  ) {
+    return participation.populate(["event", "user"]);
+  }
+
+  const hasSeatLimit = typeof event.totalSeats === "number";
+  if (hasSeatLimit) {
+    const activeSeatCount = await getActiveSeatCount(eventId);
+    const ownsActiveLock =
+      participation.status === ParticipationStatus.PENDING_PAYMENT &&
+      !!participation.lockedUntil &&
+      participation.lockedUntil > new Date();
+
+    if (!ownsActiveLock && activeSeatCount >= (event.totalSeats as number)) {
+      participation.status = ParticipationStatus.WAITLISTED;
+      participation.lockedUntil = null;
+      participation.razorpayOrderId = undefined;
+      await participation.save();
+      return participation.populate(["event", "user"]);
+    }
+  }
+
+  const order = await createRazorpayOrder(eventId, userId, event.price || 0);
+
+  participation.status = ParticipationStatus.PENDING_PAYMENT;
+  participation.lockedUntil = new Date(Date.now() + 10 * 60 * 1000);
+  participation.razorpayOrderId = order.id;
+  participation.razorpayPaymentId = undefined;
+
+  await participation.save();
+  return participation.populate(["event", "user"]);
 };
 
 

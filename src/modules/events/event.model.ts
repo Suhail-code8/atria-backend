@@ -94,6 +94,8 @@ export interface IEvent extends Document {
 
   registrationForm?: IRegistrationFormField[];
 
+  accessCode?: string;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -225,6 +227,12 @@ const eventSchema = new Schema<IEvent>(
       maxGroupItemsPerParticipant: {
         type: Number
       }
+    },
+
+    accessCode: {
+      type: String,
+      index: true,
+      sparse: true
     },
 
     registrationForm: [{
