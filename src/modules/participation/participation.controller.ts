@@ -3,11 +3,12 @@ import * as participationService from "./participation.service";
 import { Participation } from "./participation.model";
 import { ParticipationStatus } from "./participation.model";
 import { sendEmail } from "../../utils/email.service";
+import * as notificationService from "../notifications/notification.service";
 import crypto from "crypto";
-   
-                                        
-                                     
-   
+
+
+
+
 export const registerForEvent = async (
   req: Request,
   res: Response,
@@ -264,8 +265,8 @@ export const verifyPayment = async (
     }
 
     // 3️⃣ Signature is valid! Find the locked ticket
-    const participation = await Participation.findOne({ 
-      razorpayOrderId: razorpay_order_id 
+    const participation = await Participation.findOne({
+      razorpayOrderId: razorpay_order_id
     });
 
     if (!participation) {
@@ -297,6 +298,18 @@ export const verifyPayment = async (
     participation.razorpayPaymentId = razorpay_payment_id;
 
     await participation.save();
+
+    try {
+      await notificationService.sendNotification({
+        recipient: req.user!.userId,
+        type: "PAYMENT",
+        title: "Payment Successful! 🎉",
+        message: "Your payment was verified and your seat is officially confirmed.",
+        actionUrl: `/events/${participation.event}`
+      });
+    } catch (error) {
+      console.error("Failed to send payment socket notification (ignoring):", error);
+    }
 
     // 6️⃣ Populate before sending response AND before reading email fields
     await participation.populate(["event", "user"]);

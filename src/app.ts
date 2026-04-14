@@ -14,6 +14,7 @@ import categoryRoutes from "./modules/competitions/category.routes";
 import resultRoutes from "./modules/competitions/result.routes";
 import teamRoutes from "./modules/competitions/team.routes";
 import entryRoutes from "./modules/competitions/entry.routes";
+import notificationRoutes from "./modules/notifications/notification.routes";
 
 
 const app = express();
@@ -43,6 +44,7 @@ app.use('/api/competition-items', competitionItemRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/results', resultRoutes);
 app.use('/api/entries', entryRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.use(errorHandler);
 
