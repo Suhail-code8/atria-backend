@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { Event } from "../events/event.model";
 import {
   CompetitionItem,
-  IGradePoints,
+  IGradeRange,
   ICompetitionItem,
   IPlacePoints,
   ItemType
@@ -15,10 +15,10 @@ interface ItemPlacePointsInput {
   third?: number;
 }
 
-interface ItemGradePointsInput {
-  a?: number;
-  b?: number;
-  c?: number;
+export interface ItemGradeRangeInput {
+  grade: string;
+  minPoints: number;
+  maxPoints: number;
 }
 
 export interface CreateCompetitionItemInput {
@@ -29,7 +29,8 @@ export interface CreateCompetitionItemInput {
   maxParticipantsPerTeam?: number;
   maxTotalParticipants?: number;
   placePoints?: ItemPlacePointsInput;
-  gradePoints?: ItemGradePointsInput;
+  gradeRanges?: ItemGradeRangeInput[];
+  countsTowardOverallTotal?: boolean;
 }
 
 export interface UpdateCompetitionItemInput {
@@ -40,7 +41,8 @@ export interface UpdateCompetitionItemInput {
   maxParticipantsPerTeam?: number;
   maxTotalParticipants?: number;
   placePoints?: ItemPlacePointsInput;
-  gradePoints?: ItemGradePointsInput;
+  gradeRanges?: ItemGradeRangeInput[];
+  countsTowardOverallTotal?: boolean;
 }
 
 const normalizePlacePoints = (input?: ItemPlacePointsInput): IPlacePoints | undefined => {
@@ -52,13 +54,16 @@ const normalizePlacePoints = (input?: ItemPlacePointsInput): IPlacePoints | unde
   };
 };
 
-const normalizeGradePoints = (input?: ItemGradePointsInput): IGradePoints | undefined => {
-  if (!input) return undefined;
-  return {
-    a: input.a ?? 5,
-    b: input.b ?? 3,
-    c: input.c ?? 1
-  };
+const normalizeGradeRanges = (input?: ItemGradeRangeInput[]): IGradeRange[] => {
+  if (!input || !Array.isArray(input)) return [];
+  
+  return input.map((range) => {
+    return {
+      grade: range.grade.trim(),
+      minPoints: Number(range.minPoints ?? 0),
+      maxPoints: Number(range.maxPoints ?? 0)
+    };
+  });
 };
 
 const resolveAllowedCategories = async (
@@ -145,7 +150,7 @@ export const createItem = async (
     data.type === ItemType.INDIVIDUAL ? 1 : data.maxParticipantsPerTeam ?? 1;
 
   const placePoints = normalizePlacePoints(data.placePoints);
-  const gradePoints = normalizeGradePoints(data.gradePoints);
+  const gradeRanges = normalizeGradeRanges(data.gradeRanges);
 
   const item = await CompetitionItem.create({
     event: new mongoose.Types.ObjectId(eventId),
@@ -156,7 +161,8 @@ export const createItem = async (
     maxParticipantsPerTeam,
     maxTotalParticipants: data.maxTotalParticipants,
     placePoints,
-    gradePoints
+    gradeRanges,
+    countsTowardOverallTotal: data.countsTowardOverallTotal ?? true
   });
 
   return item;
@@ -268,11 +274,12 @@ export const updateItem = async (
     };
   }
 
-  if (data.gradePoints !== undefined) {
-    item.gradePoints = {
-      ...item.gradePoints,
-      ...data.gradePoints
-    };
+  if (data.gradeRanges !== undefined) {
+    item.gradeRanges = normalizeGradeRanges(data.gradeRanges);
+  }
+
+  if (data.countsTowardOverallTotal !== undefined) {
+    item.countsTowardOverallTotal = data.countsTowardOverallTotal;
   }
 
   if (item.type === ItemType.INDIVIDUAL) {

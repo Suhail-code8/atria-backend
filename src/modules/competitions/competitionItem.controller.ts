@@ -30,7 +30,8 @@ export const createItem = async (
       maxParticipantsPerTeam,
       maxTotalParticipants,
       placePoints,
-      gradePoints
+      gradeRanges,
+      countsTowardOverallTotal
     } = req.body;
 
     const item = await competitionItemService.createItem(eventId, {
@@ -41,7 +42,8 @@ export const createItem = async (
       maxParticipantsPerTeam,
       maxTotalParticipants,
       placePoints,
-      gradePoints
+      gradeRanges,
+      countsTowardOverallTotal
     }, actorUserId);
 
     res.status(201).json({ success: true, data: item });
@@ -67,7 +69,8 @@ export const updateItem = async (
       maxParticipantsPerTeam,
       maxTotalParticipants,
       placePoints,
-      gradePoints
+      gradeRanges,
+      countsTowardOverallTotal
     } = req.body;
 
     const item = await competitionItemService.updateItem(itemId, {
@@ -78,7 +81,8 @@ export const updateItem = async (
       maxParticipantsPerTeam,
       maxTotalParticipants,
       placePoints,
-      gradePoints
+      gradeRanges,
+      countsTowardOverallTotal
     }, actorUserId);
 
     res.status(200).json({ success: true, data: item });

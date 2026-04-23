@@ -10,6 +10,7 @@ export enum ParticipationRole {
 
 export enum ParticipationStatus {
   PENDING_PAYMENT = "PENDING_PAYMENT", // <-- NEW: 10-minute lock for checkout
+  PENDING_APPROVAL = "PENDING_APPROVAL", // <-- NEW: Waiting for organizer review
   WAITLISTED = "WAITLISTED",           // <-- NEW: Zero-cost waitlist queue
   REGISTERED = "REGISTERED",           // (Means Payment Confirmed for paid events)
   APPROVED = "APPROVED",
@@ -31,6 +32,13 @@ export interface IParticipation extends Document {
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   // ---------------------------------------
+
+  // --- Workflow Engine Fields ---
+  currentWorkflowNodeId?: string;
+  workflowState?: string;
+  workflowData?: Record<string, any>;
+  history?: Array<{ nodeId: string; enteredAt: Date; leftAt?: Date }>;
+  // ------------------------------
 
   registeredAt?: Date;
   createdAt?: Date;
@@ -93,6 +101,26 @@ const participationSchema = new Schema<IParticipation>(
       trim: true
     },
     // ---------------------------------------
+
+    // --- Workflow Engine Fields ---
+    currentWorkflowNodeId: {
+      type: String
+    },
+    workflowState: {
+      type: String
+    },
+    workflowData: {
+      type: Schema.Types.Mixed,
+      default: {}
+    },
+    history: [
+      {
+        nodeId:    { type: String },
+        enteredAt: { type: Date },
+        leftAt:    { type: Date }
+      }
+    ],
+    // ------------------------------
 
     registeredAt: {
       type: Date,

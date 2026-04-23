@@ -4,10 +4,11 @@ import { getIO } from "../../utils/socket";
 
 interface CreateNotificationData {
     recipient: string | mongoose.Types.ObjectId;
-    type: "PAYMENT" | "WAITLIST" | "SYSTEM";
+    type: "PAYMENT" | "WAITLIST" | "SYSTEM" | "ANNOUNCEMENT" | "RESULT" | "SUBMISSION" | "REMINDER";
     title: string;
     message: string;
     actionUrl?: string;
+    referenceId?: string;
 }
 
 export const sendNotification = async (
@@ -53,4 +54,34 @@ export const markAllAsRead = async (userId: string) => {
         { recipient: userId, read: false },
         { read: true }
     );
+};
+
+export const sendBulkNotifications = async (
+    recipients: (string | mongoose.Types.ObjectId)[],
+    data: Omit<CreateNotificationData, "recipient">
+) => {
+    try {
+        const notifications = recipients.map((recipient) => ({
+            ...data,
+            recipient,
+        }));
+
+        // 1. Bulk insert to database
+        const createdNotifications = await Notification.insertMany(notifications);
+
+        // 2. Broadcast via socket to each recipient
+        try {
+            const io = getIO();
+            createdNotifications.forEach((notification) => {
+                io.to(notification.recipient.toString()).emit("new_notification", notification);
+            });
+        } catch (socketError) {
+            console.error("Socket error during sendBulkNotifications broadcast:", socketError);
+        }
+
+        return createdNotifications;
+    } catch (error) {
+        console.error("Database error in sendBulkNotifications:", error);
+        throw error;
+    }
 };

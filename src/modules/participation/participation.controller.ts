@@ -4,6 +4,7 @@ import { Participation } from "./participation.model";
 import { ParticipationStatus } from "./participation.model";
 import { sendEmail } from "../../utils/email.service";
 import * as notificationService from "../notifications/notification.service";
+import { env } from "../../config/env";
 import crypto from "crypto";
 
 
@@ -81,9 +82,10 @@ export const getMyParticipation = async (
     );
 
     if (!participation) {
-      const error: any = new Error("Not registered for this event");
-      error.statusCode = 404;
-      throw error;
+      return res.status(200).json({
+        success: true,
+        data: null
+      });
     }
 
     res.status(200).json({
@@ -111,13 +113,9 @@ export const getMyRegistrations = async (
       .populate("event")
       .sort({ createdAt: -1 });
 
-    const events = participations
-      .map((participation) => participation.event)
-      .filter(Boolean);
-
     res.status(200).json({
       success: true,
-      data: events
+      data: participations
     });
   } catch (err) {
     next(err);
@@ -211,6 +209,34 @@ export const updateStatus = async (
   }
 };
 
+export const updateMyParticipation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const participationId = req.params.participationId as string;
+    const userId = req.user!.userId;
+    const updateData = req.body;
+    const advance = req.query.advance === "true";
+
+    const participation = await participationService.updateParticipationData(
+      participationId,
+      userId,
+      updateData,
+      advance
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Participation data updated successfully",
+      data: participation
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const getEventLeaderboard = async (
   req: Request,
   res: Response,
@@ -245,7 +271,7 @@ export const verifyPayment = async (
     }
 
     // 1️⃣ Create the expected signature using your Secret Key
-    const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
+    const keySecret = env.razorpayKeySecret || "";
     const generatedSignature = crypto
       .createHmac("sha256", keySecret)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -264,79 +290,13 @@ export const verifyPayment = async (
       throw error;
     }
 
-    // 3️⃣ Signature is valid! Find the locked ticket
-    const participation = await Participation.findOne({
-      razorpayOrderId: razorpay_order_id
-    });
-
-    if (!participation) {
-      const error: any = new Error("Ticket record not found for this order");
-      error.statusCode = 404;
-      throw error;
-    }
-
-    // 4️⃣ Ensure the requesting user owns this participation (prevents cross-user replay)
-    if (participation.user.toString() !== req.user!.userId) {
-      const error: any = new Error("Forbidden: This order does not belong to your account");
-      error.statusCode = 403;
-      throw error;
-    }
-
-    // Idempotency guard: if already verified, return the existing confirmed record
-    if (participation.status === ParticipationStatus.REGISTERED) {
-      await participation.populate(["event", "user"]);
-      return res.status(200).json({
-        success: true,
-        message: "Payment already verified.",
-        data: participation
-      });
-    }
-
-    // 5️⃣ THE MAGIC: Make the seat permanent!
-    participation.status = ParticipationStatus.REGISTERED;
-    participation.lockedUntil = null; // Clear the 10-minute timer!
-    participation.razorpayPaymentId = razorpay_payment_id;
-
-    await participation.save();
-
-    try {
-      await notificationService.sendNotification({
-        recipient: req.user!.userId,
-        type: "PAYMENT",
-        title: "Payment Successful! 🎉",
-        message: "Your payment was verified and your seat is officially confirmed.",
-        actionUrl: `/events/${participation.event}`
-      });
-    } catch (error) {
-      console.error("Failed to send payment socket notification (ignoring):", error);
-    }
-
-    // 6️⃣ Populate before sending response AND before reading email fields
-    await participation.populate(["event", "user"]);
-
-    // 7️⃣ Send the confirmation email NOW that payment is actually confirmed
-    const participantUser = (participation as any).user;
-    const participantEvent = (participation as any).event;
-    const recipientEmail = participantUser?.email as string | undefined;
-    const eventTitle = (participantEvent?.title as string | undefined) || "your event";
-
-    if (recipientEmail) {
-      try {
-        await sendEmail(
-          recipientEmail,
-          `Registration Confirmed: ${eventTitle}`,
-          `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h1 style="color: #2563eb; margin-bottom: 16px;">You are in!</h1>
-              <p style="font-size: 16px; color: #374151;">Thanks for registering for <strong>${eventTitle}</strong>.</p>
-              <p style="font-size: 14px; color: #6b7280; margin-top: 20px;">Team Atria</p>
-            </div>
-          `
-        );
-      } catch {
-        // Email failure must not block the payment confirmation response
-      }
-    }
+    // 3️⃣ Signature is valid! Finalize in service
+    const participation = await participationService.verifyRazorpayPayment(
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      req.user!.userId
+    );
 
     res.status(200).json({
       success: true,
@@ -388,3 +348,71 @@ export const retryPayment = async (
     next(err);
   }
 };
+
+// ─── Workflow Engine ──────────────────────────────────────────────────────────
+
+/**
+ * POST /api/participation/:participationId/advance
+ * Advances the authenticated participant to the next workflow node.
+ */
+export const advanceWorkflow = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const participationId = req.params.participationId as string;
+    const userId = req.user!.userId;
+
+    const result = await participationService.advanceWorkflowNode(
+      participationId,
+      userId
+    );
+
+    const nextNodeId = result.nextNode?.id || 'END';
+    const nextNodeType = result.nextNode?.type || 'ONBOARDING_COMPLETE';
+
+    res.status(200).json({
+      success: true,
+      message: `Workflow advanced to ${nextNodeId === 'END' ? 'completion' : `node '${nextNodeId}' (${nextNodeType})`}`,
+      data: {
+        participation: result.participation,
+        nextNode: result.nextNode
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/participation/:participationId/regress
+ * Moves the participant back to the previous node in their history.
+ */
+export const regressWorkflow = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const participationId = req.params.participationId as string;
+    const userId = req.user!.userId;
+
+    const result = await participationService.regressWorkflowNode(
+      participationId,
+      userId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Workflow regressed to node '${result.prevNode.id}' (${result.prevNode.type})`,
+      data: {
+        participation: result.participation,
+        prevNode: result.prevNode
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+

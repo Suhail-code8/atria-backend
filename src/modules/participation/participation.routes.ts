@@ -56,9 +56,14 @@ router.post(
   authMiddleware,
   controller.withdrawFromEvent
 );
+router.patch(
+  "/:participationId",
+  authMiddleware,
+  controller.updateMyParticipation
+);
                
 
-                                                               
+                                                                
 router.get(
   "/:eventId/list",
   authMiddleware,
@@ -74,4 +79,17 @@ router.patch(
   controller.updateStatus
 );
 
+// ─── Workflow Engine ──────────────────────────────────────────────────────────
+router.post(
+  "/:participationId/advance",
+  authMiddleware,
+  controller.advanceWorkflow
+);
+router.post(
+  "/:participationId/regress",
+  authMiddleware,
+  controller.regressWorkflow
+);
+
 export default router;
+

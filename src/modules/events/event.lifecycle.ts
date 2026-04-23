@@ -13,7 +13,8 @@ const allowedTransitions: Record<EventStatus, EventStatus[]> = {
   [EventStatus.PUBLISHED]: [
     EventStatus.REGISTRATION_OPEN,
     EventStatus.CANCELLED,
-    EventStatus.ARCHIVED
+    EventStatus.ARCHIVED,
+    EventStatus.DRAFT
   ],
 
   [EventStatus.REGISTRATION_OPEN]: [

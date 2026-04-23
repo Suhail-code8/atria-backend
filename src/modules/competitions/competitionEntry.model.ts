@@ -3,6 +3,7 @@ import { IEvent } from "../events/event.model";
 import { ICompetitionItem } from "./competitionItem.model";
 import { ITeam } from "./team.model";
 import { IUser } from "../users/user.model";
+import { recalculateIndividualPoints } from "./point.service";
 
 export enum CompetitionEntryStatus {
   REGISTERED = "REGISTERED",
@@ -58,6 +59,34 @@ const competitionEntrySchema = new Schema<ICompetitionEntry>(
 );
 
 competitionEntrySchema.index({ event: 1, item: 1, team: 1 });
+
+competitionEntrySchema.pre("save", async function () {
+  if (this.isModified("participants")) {
+    try {
+      const oldDoc = await (this.constructor as any).findById(this._id);
+      if (oldDoc) {
+        (this as any)._oldParticipantIds = oldDoc.participants.map((p: any) => p.toString());
+      }
+    } catch (err) {
+      console.error("Error in CompetitionEntry pre-save hook:", err);
+    }
+  }
+});
+
+competitionEntrySchema.post("save", async function (doc) {
+  if (this.isModified("participants")) {
+    const currentParticipantIds = doc.participants.map((p) => p.toString());
+    const oldParticipantIds = (this as any)._oldParticipantIds || [];
+    const allAffectedIds = Array.from(new Set([...currentParticipantIds, ...oldParticipantIds]));
+
+    if (allAffectedIds.length > 0) {
+      await recalculateIndividualPoints(
+        doc.event as string,
+        allAffectedIds
+      );
+    }
+  }
+});
 
 export const CompetitionEntry = mongoose.model<ICompetitionEntry>(
   "CompetitionEntry",

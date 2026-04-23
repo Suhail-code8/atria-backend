@@ -78,3 +78,18 @@ export const getIndividualLeaderboard = async (
     next(err);
   }
 };
+
+export const getResultsByEvent = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const eventId = req.params.eventId as string;
+    const results = await resultService.getResultsByEvent(eventId);
+
+    res.status(200).json({ success: true, data: results });
+  } catch (err) {
+    next(err);
+  }
+};

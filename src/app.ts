@@ -15,13 +15,16 @@ import resultRoutes from "./modules/competitions/result.routes";
 import teamRoutes from "./modules/competitions/team.routes";
 import entryRoutes from "./modules/competitions/entry.routes";
 import notificationRoutes from "./modules/notifications/notification.routes";
+import eventJudgeRoutes from "./modules/events/eventJudge.routes";
+
+import { env } from "./config/env";
 
 
 const app = express();
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: env.clientUrl,
     credentials: true
   })
 );
@@ -45,6 +48,7 @@ app.use('/api/teams', teamRoutes);
 app.use('/api/results', resultRoutes);
 app.use('/api/entries', entryRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/event-judges', eventJudgeRoutes);
 
 app.use(errorHandler);
 

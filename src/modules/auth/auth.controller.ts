@@ -6,11 +6,13 @@ import { OAuth2Client } from "google-auth-library";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID?.trim());
+import { env } from "../../config/env";
+
+const googleClient = new OAuth2Client(env.googleClientId);
 
 const REFRESH_TOKEN_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
+  secure: env.nodeEnv === "production",
   sameSite: "strict" as const,
   path: "/api/auth/refresh",
   maxAge: 7 * 24 * 60 * 60 * 1000                          
@@ -155,7 +157,7 @@ export const googleLogin = async (
 
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID?.trim()
+      audience: env.googleClientId
     });
 
     const payload = ticket.getPayload();

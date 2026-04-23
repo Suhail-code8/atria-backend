@@ -5,12 +5,17 @@ import {
   IAnnouncement
 } from "./announcement.model";
 import { Event } from "../events/event.model";
+import { Participation } from "../participation/participation.model";
+import * as notificationService from "../notifications/notification.service";
+import { sendEmail } from "../../utils/email.service";
+import { env } from "../../config/env";
 
 interface CreateAnnouncementInput {
   title: string;
   content: string;
   priority?: AnnouncementPriority;
   isPublished?: boolean;
+  sendEmail?: boolean;
 }
 
 interface UpdateAnnouncementInput {
@@ -60,10 +65,9 @@ export const createAnnouncement = async (
     throw error;
   }
 
-  await ensureOrganizerOwnsEvent(eventId, organizerId);
+  const event = await ensureOrganizerOwnsEvent(eventId, organizerId);
 
   const isPublished = data.isPublished ?? true;
-
   const announcement = await Announcement.create({
     event: new mongoose.Types.ObjectId(eventId),
     createdBy: new mongoose.Types.ObjectId(organizerId),
@@ -73,6 +77,56 @@ export const createAnnouncement = async (
     isPublished,
     publishedAt: isPublished ? new Date() : undefined
   });
+  if (isPublished) {
+    const participants = await Participation.find({
+      event: new mongoose.Types.ObjectId(eventId),
+      status: { $in: ["REGISTERED", "APPROVED"] }
+    }).populate("user", "name email");
+
+    const recipientIds = participants.map(p => (p.user as any)._id.toString());
+    const eventName = event.title || "Event";
+
+
+    if (recipientIds.length > 0) {
+      // 1. In-App Notifications
+      notificationService.sendBulkNotifications(recipientIds, {
+        type: "ANNOUNCEMENT",
+        title: `New Announcement: ${data.title}`,
+        message: data.content.substring(0, 100) + (data.content.length > 100 ? "..." : ""),
+        actionUrl: `/dashboard/events/${eventId}`,
+        referenceId: eventId
+      }).catch(err => console.error("Bulk notification failed for announcement:", err));
+
+      // 2. Email Broadcasting (if requested)
+      if (data.sendEmail) {
+        const dashboardUrl = `${env.clientUrl}/dashboard/events/${eventId}`;
+        
+        // Using Promise.allSettled to ensure failure of one doesn't stop others, 
+        // though sequential is safer for some SMTP limits. 
+        // Given current scale, we'll fire them off.
+        participants.forEach(p => {
+          const user = p.user as any;
+          if (user?.email) {
+            const emailHtml = `
+              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+                <h2 style="color: #0f172a; margin-top: 0;">${data.title}</h2>
+                <p style="color: #475569; font-size: 14px; margin-bottom: 24px;">Message from <strong>${eventName}</strong></p>
+                <div style="background-color: #f8fafc; padding: 16px; border-radius: 6px; color: #1e293b; white-space: pre-wrap;">${data.content}</div>
+                <div style="margin-top: 32px; text-align: center;">
+                  <a href="${dashboardUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Event Dashboard</a>
+                </div>
+                <hr style="margin-top: 32px; border: 0; border-top: 1px solid #e2e8f0;" />
+                <p style="font-size: 11px; color: #94a3b8; text-align: center;">You are receiving this because you are a registered participant of ${eventName}.</p>
+              </div>
+            `;
+            
+            sendEmail(user.email, `[${eventName}] ${data.title}`, emailHtml)
+              .catch(err => console.error(`Failed to send announcement email to ${user.email}:`, err));
+          }
+        });
+      }
+    }
+  }
 
   return announcement;
 };

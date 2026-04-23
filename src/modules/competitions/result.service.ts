@@ -4,7 +4,8 @@ import { CompetitionItem, ItemType } from "./competitionItem.model";
 import { CompetitionEntry } from "./competitionEntry.model";
 import { Result, IResult } from "./result.model";
 import { Team, ITeam } from "./team.model";
-import { User } from "../users/user.model";
+import { User, UserRole } from "../users/user.model";
+import { Participation, ParticipationStatus } from "../participation/participation.model";
 
 interface AddResultInput {
   eventId: string;
@@ -15,6 +16,7 @@ interface AddResultInput {
   participantId?: string | null;
   place?: number;
   grade?: string;
+  gradePoints?: any; // Added for legacy support
 }
 
 interface IndividualLeaderboardEntry {
@@ -52,23 +54,26 @@ const getPointsForPlace = (
 };
 
 const getPointsForGrade = (
-  gradePoints:
-    | {
-        a?: number;
-        b?: number;
-        c?: number;
-      }
-    | undefined,
+  item: any,
   grade?: string
 ): number => {
-  if (!gradePoints || !grade?.trim()) {
-    return 0;
+  if (!grade?.trim()) return 0;
+  const normalizedGrade = grade.trim().toUpperCase();
+
+  // 1. Try new gradeRanges array
+  if (item.gradeRanges && Array.isArray(item.gradeRanges) && item.gradeRanges.length > 0) {
+    const matchedRange = item.gradeRanges.find((r: any) => r.grade.toUpperCase() === normalizedGrade);
+    if (matchedRange) return matchedRange.maxPoints;
   }
 
-  const normalizedGrade = grade.trim().toUpperCase();
-  if (normalizedGrade === "A") return Number(gradePoints.a ?? 0);
-  if (normalizedGrade === "B") return Number(gradePoints.b ?? 0);
-  if (normalizedGrade === "C") return Number(gradePoints.c ?? 0);
+  // 2. Fallback to old gradePoints object
+  if (item.gradePoints && typeof item.gradePoints === 'object') {
+    // Map 'A' -> gradePoints['a']
+    const oldKey = normalizedGrade.toLowerCase();
+    const points = item.gradePoints[oldKey];
+    if (points !== undefined) return Number(points);
+  }
+
   return 0;
 };
 
@@ -92,14 +97,7 @@ export const addResult = async ({
     ensureValidObjectId(entryId, "entry ID");
   }
 
-  if (!place && !grade) {
-    const error: any = new Error(
-      "You must provide either a place or a grade to submit a result."
-    );
-    error.statusCode = 400;
-    throw error;
-  }
-
+  const actorUser = await User.findById(actorUserId);
   const event = await Event.findById(eventId);
   if (!event) {
     const error: any = new Error("Event not found");
@@ -107,8 +105,8 @@ export const addResult = async ({
     throw error;
   }
 
-  if (event.createdBy.toString() !== actorUserId) {
-    const error: any = new Error("Forbidden: Only event creator can add results");
+  if (event.createdBy.toString() !== actorUserId && actorUser?.role !== UserRole.JUDGE) {
+    const error: any = new Error("Forbidden: Only event creator or judge can add results");
     error.statusCode = 403;
     throw error;
   }
@@ -171,9 +169,13 @@ export const addResult = async ({
   }
 
   if (!participantId) {
-    const error: any = new Error("participantId is required");
-    error.statusCode = 400;
-    throw error;
+    if (entry.participants.length > 0) {
+      participantId = entry.participants[0].toString();
+    } else {
+      const error: any = new Error("participantId is required and no participants are enrolled in this entry");
+      error.statusCode = 400;
+      throw error;
+    }
   }
 
   ensureValidObjectId(participantId, "participant ID");
@@ -194,16 +196,23 @@ export const addResult = async ({
   const itemObjectId = new mongoose.Types.ObjectId(itemId);
 
   const placePoints = getPointsForPlace(item.placePoints, place);
-  const gradePoints = getPointsForGrade(item.gradePoints, grade);
+  const gradePoints = getPointsForGrade(item, grade);
   const earnedPoints = placePoints + gradePoints;
 
-  const existingResult = await Result.findOne({
+  const query: any = {
     event: eventObjectId,
     item: itemObjectId,
     entry: entry._id
-  });
+  };
+  
+  if (item.type === ItemType.INDIVIDUAL) {
+    query.participant = participantObjectId;
+  }
+
+  const existingResult = await Result.findOne(query);
 
   if (existingResult) {
+    existingResult.participant = participantObjectId; // Ensure correct participant is set if updated
     existingResult.place = place;
     existingResult.grade = grade?.trim() || undefined;
     existingResult.earnedPoints = earnedPoints;
@@ -252,6 +261,29 @@ export const getIndividualLeaderboard = async (
     },
     {
       $lookup: {
+        from: Participation.collection.name,
+        let: { pId: "$participant", eId: "$event" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$user", "$$pId"] },
+                  { $eq: ["$event", "$$eId"] }
+                ]
+              },
+              status: { $in: [ParticipationStatus.REGISTERED, ParticipationStatus.APPROVED] }
+            }
+          }
+        ],
+        as: "participationDoc"
+      }
+    },
+    {
+      $unwind: "$participationDoc"
+    },
+    {
+      $lookup: {
         from: itemCollectionName,
         localField: "item",
         foreignField: "_id",
@@ -263,12 +295,51 @@ export const getIndividualLeaderboard = async (
     },
     {
       $match: {
-        "itemDoc.type": ItemType.INDIVIDUAL
+        "itemDoc.countsTowardOverallTotal": { $ne: false }
       }
     },
     {
+      $lookup: {
+        from: CompetitionEntry.collection.name,
+        localField: "entry",
+        foreignField: "_id",
+        as: "entryDoc"
+      }
+    },
+    {
+      $unwind: {
+        path: "$entryDoc",
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    {
+      $project: {
+        earnedPoints: 1,
+        participant: 1,
+        entryParticipants: { $ifNull: ["$entryDoc.participants", []] },
+        isIndividual: { $eq: ["$itemDoc.type", ItemType.INDIVIDUAL] }
+      }
+    },
+    {
+      // If it's individual, we use the specific participant. 
+      // If it's group, we duplicate points for all entry participants.
+      $project: {
+        earnedPoints: 1,
+        allAffectedParticipants: {
+          $cond: {
+            if: "$isIndividual",
+            then: ["$participant"],
+            else: { $setUnion: [["$participant"], "$entryParticipants"] }
+          }
+        }
+      }
+    },
+    {
+       $unwind: "$allAffectedParticipants"
+    },
+    {
       $group: {
-        _id: "$participant",
+        _id: "$allAffectedParticipants",
         totalPoints: { $sum: "$earnedPoints" }
       }
     },
@@ -305,4 +376,17 @@ export const getIndividualLeaderboard = async (
   ]);
 
   return leaderboard;
+};
+
+/**
+ * Get all individual results for an event with populated details.
+ */
+export const getResultsByEvent = async (eventId: string): Promise<IResult[]> => {
+  ensureValidObjectId(eventId, "event ID");
+
+  return Result.find({ event: new mongoose.Types.ObjectId(eventId) })
+    .populate("participant", "name email")
+    .populate("team", "name")
+    .populate("item", "name type")
+    .sort({ createdAt: -1 });
 };

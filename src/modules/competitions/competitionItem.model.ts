@@ -12,10 +12,10 @@ export interface IPlacePoints {
   third: number;
 }
 
-export interface IGradePoints {
-  a: number;
-  b: number;
-  c: number;
+export interface IGradeRange {
+  grade: string;
+  minPoints: number;
+  maxPoints: number;
 }
 
 export interface ICompetitionItem extends Document {
@@ -27,7 +27,8 @@ export interface ICompetitionItem extends Document {
   maxParticipantsPerTeam: number;
   maxTotalParticipants?: number;
   placePoints: IPlacePoints;
-  gradePoints: IGradePoints;
+  gradeRanges: IGradeRange[];
+  countsTowardOverallTotal: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -83,19 +84,19 @@ const competitionItemSchema = new Schema<ICompetitionItem>(
         default: 2
       }
     },
-    gradePoints: {
-      a: {
-        type: Number,
-        default: 5
-      },
-      b: {
-        type: Number,
-        default: 3
-      },
-      c: {
-        type: Number,
-        default: 1
-      }
+    gradeRanges: {
+      type: [
+        {
+          grade: { type: String, required: true },
+          minPoints: { type: Number, required: true },
+          maxPoints: { type: Number, required: true }
+        }
+      ],
+      default: []
+    },
+    countsTowardOverallTotal: {
+      type: Boolean,
+      default: true
     }
   },
   {

@@ -9,8 +9,14 @@ const router = Router();
 router.post(
   "/",
   authMiddleware,
-  roleMiddleware(UserRole.ORGANIZER),
+  roleMiddleware(UserRole.ORGANIZER, UserRole.JUDGE),
   controller.addResult
+);
+
+router.get(
+  "/event/:eventId",
+  authMiddleware,
+  controller.getResultsByEvent
 );
 
 router.get(

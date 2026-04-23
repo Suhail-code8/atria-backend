@@ -19,4 +19,8 @@ router.post("/:eventId/poster/generate", authMiddleware, roleMiddleware(UserRole
 router.get("/:eventId/access-code", authMiddleware, roleMiddleware(UserRole.ORGANIZER), controller.getAccessCode);
 router.post("/:eventId/regenerate-access-code", authMiddleware, roleMiddleware(UserRole.ORGANIZER), controller.regenerateAccessCode);
 
+// ─── Workflow Engine ──────────────────────────────────────────────────────────
+router.patch("/:eventId/workflow", authMiddleware, roleMiddleware(UserRole.ORGANIZER), controller.updateWorkflow);
+
 export default router;
+

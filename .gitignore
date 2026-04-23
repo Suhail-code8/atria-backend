@@ -34,3 +34,6 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+
+# AI Workspace
+scratch/

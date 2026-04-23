@@ -1,11 +1,12 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { IEvent } from "../events/event.model";
-import { ICompetitionItem } from "./competitionItem.model";
+import { ICompetitionItem, CompetitionItem } from "./competitionItem.model";
 import { ICompetitionEntry, CompetitionEntry } from "./competitionEntry.model";
 import { ITeam } from "./team.model";
 import { IUser } from "../users/user.model";
 import { Team } from "./team.model";
 import { Participation } from "../participation/participation.model";
+import { recalculateTeamPoints, recalculateIndividualPoints } from "./point.service";
 
 export interface IResult extends Document {
   event: mongoose.Types.ObjectId | string | IEvent;
@@ -63,31 +64,6 @@ const resultSchema = new Schema<IResult>(
   }
 );
 
-const recalculateTeamPoints = async (
-  teamId: mongoose.Types.ObjectId | string
-): Promise<void> => {
-  const normalizedTeamId =
-    typeof teamId === "string" ? new mongoose.Types.ObjectId(teamId) : teamId;
-
-  const totalAgg = await Result.aggregate<{ totalPoints: number }>([
-    {
-      $match: {
-        team: normalizedTeamId
-      }
-    },
-    {
-      $group: {
-        _id: "$team",
-        totalPoints: { $sum: "$earnedPoints" }
-      }
-    }
-  ]);
-
-  const totalPoints = totalAgg.length > 0 ? totalAgg[0].totalPoints : 0;
-
-  await Team.findByIdAndUpdate(normalizedTeamId, { totalPoints });
-};
-
 const getEntryParticipantIdsForResult = async (
   resultDoc: IResult
 ): Promise<mongoose.Types.ObjectId[]> => {
@@ -126,68 +102,6 @@ const getEntryParticipantIdsForResult = async (
       : (resultDoc.participant as mongoose.Types.ObjectId).toString();
 
   return [new mongoose.Types.ObjectId(fallbackParticipantId)];
-};
-
-const recalculateIndividualPoints = async (
-  eventId: mongoose.Types.ObjectId | string,
-  participantIds: mongoose.Types.ObjectId[]
-): Promise<void> => {
-  const normalizedEventId =
-    typeof eventId === "string" ? new mongoose.Types.ObjectId(eventId) : eventId;
-
-  const uniqueParticipantIds = Array.from(
-    new Set(participantIds.map((id) => id.toString()))
-  ).map((id) => new mongoose.Types.ObjectId(id));
-
-  for (const participantId of uniqueParticipantIds) {
-    const totalAgg = await Result.aggregate<{ totalPoints: number }>([
-      {
-        $match: {
-          event: normalizedEventId
-        }
-      },
-      {
-        $lookup: {
-          from: CompetitionEntry.collection.name,
-          localField: "entry",
-          foreignField: "_id",
-          as: "entryDoc"
-        }
-      },
-      {
-        $unwind: {
-          path: "$entryDoc",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $match: {
-          $or: [
-            { participant: participantId },
-            { "entryDoc.participants": participantId }
-          ]
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalPoints: { $sum: "$earnedPoints" }
-        }
-      }
-    ]);
-
-    const totalPoints = totalAgg.length > 0 ? totalAgg[0].totalPoints : 0;
-
-    await Participation.findOneAndUpdate(
-      {
-        event: normalizedEventId,
-        user: participantId
-      },
-      {
-        $set: { individualPoints: totalPoints }
-      }
-    );
-  }
 };
 
 resultSchema.post("save", async function (doc) {

@@ -1,6 +1,51 @@
 import mongoose, { Schema, Document } from "mongoose";
 import { IUser } from "../users/user.model";
 
+// ─── Workflow Engine Types ────────────────────────────────────────────────────
+
+export enum WorkflowNodeType {
+  REGISTRATION       = "REGISTRATION",
+  PAYMENT            = "PAYMENT",
+  TEAM_FORMATION     = "TEAM_FORMATION",
+  COMPETITION_OPT_IN = "COMPETITION_OPT_IN",
+  JUDGING_ROUND      = "JUDGING_ROUND",
+  LEADERBOARD        = "LEADERBOARD",
+  SUBMISSION         = "SUBMISSION",
+  ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE"
+}
+
+export interface IWorkflowNode {
+  id: string;
+  type: WorkflowNodeType;
+  label?: string;
+  config: Record<string, any>;
+  position?: { x: number; y: number };
+}
+
+export interface IWorkflowEdge {
+  source: string;
+  target: string;
+  condition?: Record<string, any>;
+}
+
+export interface IFeatureModuleConfig {
+  enabled: boolean;
+  config?: Record<string, any>;
+}
+
+export interface IFeatureModules {
+  leaderboard?: IFeatureModuleConfig;
+  judgingFeedback?: IFeatureModuleConfig;
+  teamHub?: IFeatureModuleConfig;
+  announcements?: IFeatureModuleConfig;
+}
+
+export interface IWorkflow {
+  nodes: IWorkflowNode[];
+  edges: IWorkflowEdge[];
+  featureModules?: IFeatureModules;
+}
+
    
               
    
@@ -82,6 +127,7 @@ export interface IEvent extends Document {
   price: number;
   totalSeats?: number;
   availableSeats?: number;
+  requiresApproval: boolean;
 
   status: EventStatus;
 
@@ -95,6 +141,17 @@ export interface IEvent extends Document {
   registrationForm?: IRegistrationFormField[];
 
   accessCode?: string;
+
+  generatedPosters: {
+    style: string;
+    url: string;
+    prompt: string;
+    createdAt: Date;
+  }[];
+
+  // ─── Workflow Engine ──────────────────────────────────────────────────────
+  workflow: IWorkflow;
+  // ─────────────────────────────────────────────────────────────────────────
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -113,7 +170,6 @@ const eventSchema = new Schema<IEvent>(
 
     description: {
       type: String,
-      required: true,
       trim: true
     },
 
@@ -135,13 +191,11 @@ const eventSchema = new Schema<IEvent>(
     },
 
     startDate: {
-      type: Date,
-      required: true
+      type: Date
     },
 
     endDate: {
-      type: Date,
-      required: true
+      type: Date
     },
 
     registrationStartDate: {
@@ -179,6 +233,10 @@ const eventSchema = new Schema<IEvent>(
     availableSeats: {
       type: Number,
       min: [0, 'Event is sold out!']  
+    },
+    requiresApproval: {
+      type: Boolean,
+      default: false
     },
 
     status: {
@@ -234,6 +292,13 @@ const eventSchema = new Schema<IEvent>(
       index: true,
       sparse: true
     },
+    
+    generatedPosters: [{
+      style: { type: String, required: true },
+      url: { type: String, required: true },
+      prompt: { type: String, required: true },
+      createdAt: { type: Date, default: Date.now }
+    }],
 
     registrationForm: [{
       id: { type: String, required: true },
@@ -246,7 +311,33 @@ const eventSchema = new Schema<IEvent>(
       required: { type: Boolean, default: false },
       options: [{ type: String }],
       placeholder: { type: String }
-    }]
+    }],
+
+    // ─── Workflow Engine ────────────────────────────────────────────────────
+    workflow: {
+      nodes: [
+        {
+          id:       { type: String, required: true },
+          type:     { type: String, enum: Object.values(WorkflowNodeType), required: true },
+          label:    { type: String },
+          config:   { type: Schema.Types.Mixed, default: {} },
+          position: { x: { type: Number }, y: { type: Number } }
+        }
+      ],
+      edges: [
+        {
+          source:    { type: String, required: true },
+          target:    { type: String, required: true },
+          condition: { type: Schema.Types.Mixed }
+        }
+      ],
+      featureModules: {
+        leaderboard:    { enabled: { type: Boolean, default: false }, config: { type: Schema.Types.Mixed, default: {} } },
+        judgingFeedback:{ enabled: { type: Boolean, default: false }, config: { type: Schema.Types.Mixed, default: {} } },
+        teamHub:        { enabled: { type: Boolean, default: false }, config: { type: Schema.Types.Mixed, default: {} } },
+        announcements:  { enabled: { type: Boolean, default: false }, config: { type: Schema.Types.Mixed, default: {} } }
+      }
+    }
   },
   {
     timestamps: true
