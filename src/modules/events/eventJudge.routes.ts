@@ -6,7 +6,6 @@ import { UserRole } from "../users/user.model";
 
 const router = Router();
 
-// Organizer assigns a judge
 router.post(
   "/",
   authMiddleware,
@@ -14,7 +13,6 @@ router.post(
   controller.assignJudge
 );
 
-// Organizer gets all judges for an event
 router.get(
   "/event/:eventId",
   authMiddleware,
@@ -22,21 +20,18 @@ router.get(
   controller.getEventJudges
 );
 
-// Judge gets all their event assignments
 router.get(
   "/me/all",
   authMiddleware,
   controller.getMyAllAssignments
 );
 
-// Judge gets their own assignment for an event
 router.get(
   "/event/:eventId/me",
   authMiddleware,
   controller.getMyJudgeAssignment
 );
 
-// Organizer updates a judge's assigned items
 router.patch(
   "/:id",
   authMiddleware,
@@ -44,7 +39,6 @@ router.patch(
   controller.updateJudgeItems
 );
 
-// Organizer removes a judge
 router.delete(
   "/:id",
   authMiddleware,

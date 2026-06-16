@@ -489,7 +489,7 @@ export const generateEventPoster = async (
 
     // 3. Fallback to Gradient if AI Fails
     if (!imageUrl) {
-      imageUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(event.title)}&background=random&size=1080&color=fff&bold=true`;
+      imageUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(event.title)}&background=random&size=1080&color=fff&bold=true`;  
     }
 
     // 4. Update Caches & Save (Only cache if it's a real AI generation)

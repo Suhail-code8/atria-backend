@@ -93,13 +93,13 @@ export const createAnnouncement = async (
         type: "ANNOUNCEMENT",
         title: `New Announcement: ${data.title}`,
         message: data.content.substring(0, 100) + (data.content.length > 100 ? "..." : ""),
-        actionUrl: `/dashboard/events/${eventId}`,
+        actionUrl: `/events/${eventId}/dashboard`,
         referenceId: eventId
       }).catch(err => console.error("Bulk notification failed for announcement:", err));
 
       // 2. Email Broadcasting (if requested)
       if (data.sendEmail) {
-        const dashboardUrl = `${env.clientUrl}/dashboard/events/${eventId}`;
+        const dashboardUrl = `${env.clientUrl}/events/${eventId}/dashboard`;
         
         // Using Promise.allSettled to ensure failure of one doesn't stop others, 
         // though sequential is safer for some SMTP limits. 
