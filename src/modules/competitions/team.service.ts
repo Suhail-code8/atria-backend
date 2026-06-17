@@ -11,7 +11,7 @@ import {
   ParticipationRole,
   ParticipationStatus
 } from "../participation/participation.model";
-import { User } from "../users/user.model";
+import { User, UserRole } from "../users/user.model";
 import { advanceWorkflowNodeAsSystem } from "../participation/participation.service";
 import { syncTeamEntries } from "./entry.service";
 
@@ -124,7 +124,7 @@ export const createTeam = async (
       name: getNameFromEmail(normalizedEmail),
       email: normalizedEmail,
       password: hashedPassword,
-      role: "PARTICIPANT",
+      role: UserRole.PARTICIPANT,
       refreshToken: null,
       isPlaceholder: true
     });
@@ -253,7 +253,7 @@ export const addTeamMember = async (
       name: getNameFromEmail(normalizedEmail),
       email: normalizedEmail,
       password: hashedPassword,
-      role: "PARTICIPANT",
+      role: UserRole.PARTICIPANT,
       refreshToken: null,
       isPlaceholder: true
     });
@@ -623,7 +623,7 @@ export const addTeamMemberByOrganizer = async (
       name: getNameFromEmail(normalizedEmail),
       email: normalizedEmail,
       password: hashedPassword,
-      role: "PARTICIPANT",
+      role: UserRole.PARTICIPANT,
       refreshToken: null,
       isPlaceholder: true
     });

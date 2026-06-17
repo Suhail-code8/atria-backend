@@ -5,7 +5,7 @@ import {
   IAnnouncement
 } from "./announcement.model";
 import { Event } from "../events/event.model";
-import { Participation } from "../participation/participation.model";
+import { Participation,ParticipationStatus } from "../participation/participation.model";
 import * as notificationService from "../notifications/notification.service";
 import { sendEmail } from "../../utils/email.service";
 import { env } from "../../config/env";
@@ -33,7 +33,10 @@ const ensureValidObjectId = (id: string, label: string) => {
   }
 };
 
-const ensureOrganizerOwnsEvent = async (eventId: string, organizerId: string) => {
+const ensureOrganizerOwnsEvent = async (
+  eventId: string,
+  organizerId: string,
+) => {
   const event = await Event.findById(eventId);
 
   if (!event) {
@@ -43,7 +46,9 @@ const ensureOrganizerOwnsEvent = async (eventId: string, organizerId: string) =>
   }
 
   if (event.createdBy.toString() !== organizerId) {
-    const error: any = new Error("Forbidden: Only event organizer can manage announcements");
+    const error: any = new Error(
+      "Forbidden: Only event organizer can manage announcements",
+    );
     error.statusCode = 403;
     throw error;
   }
@@ -54,7 +59,7 @@ const ensureOrganizerOwnsEvent = async (eventId: string, organizerId: string) =>
 export const createAnnouncement = async (
   eventId: string,
   organizerId: string,
-  data: CreateAnnouncementInput
+  data: CreateAnnouncementInput,
 ): Promise<IAnnouncement> => {
   ensureValidObjectId(eventId, "event ID");
   ensureValidObjectId(organizerId, "organizer ID");
@@ -75,36 +80,43 @@ export const createAnnouncement = async (
     content: data.content,
     priority: data.priority ?? AnnouncementPriority.INFO,
     isPublished,
-    publishedAt: isPublished ? new Date() : undefined
+    publishedAt: isPublished ? new Date() : undefined,
   });
   if (isPublished) {
     const participants = await Participation.find({
       event: new mongoose.Types.ObjectId(eventId),
-      status: { $in: ["REGISTERED", "APPROVED"] }
+      status: { $in: ["REGISTERED", "APPROVED"] as ParticipationStatus[] },
     }).populate("user", "name email");
 
-    const recipientIds = participants.map(p => (p.user as any)._id.toString());
+    const recipientIds = participants.map((p) =>
+      (p.user as any)._id.toString(),
+    );
     const eventName = event.title || "Event";
-
 
     if (recipientIds.length > 0) {
       // 1. In-App Notifications
-      notificationService.sendBulkNotifications(recipientIds, {
-        type: "ANNOUNCEMENT",
-        title: `New Announcement: ${data.title}`,
-        message: data.content.substring(0, 100) + (data.content.length > 100 ? "..." : ""),
-        actionUrl: `/events/${eventId}/dashboard`,
-        referenceId: eventId
-      }).catch(err => console.error("Bulk notification failed for announcement:", err));
+      notificationService
+        .sendBulkNotifications(recipientIds, {
+          type: "ANNOUNCEMENT",
+          title: `New Announcement: ${data.title}`,
+          message:
+            data.content.substring(0, 100) +
+            (data.content.length > 100 ? "..." : ""),
+          actionUrl: `/events/${eventId}/dashboard`,
+          referenceId: eventId,
+        })
+        .catch((err) =>
+          console.error("Bulk notification failed for announcement:", err),
+        );
 
       // 2. Email Broadcasting (if requested)
       if (data.sendEmail) {
         const dashboardUrl = `${env.clientUrl}/events/${eventId}/dashboard`;
-        
-        // Using Promise.allSettled to ensure failure of one doesn't stop others, 
-        // though sequential is safer for some SMTP limits. 
+
+        // Using Promise.allSettled to ensure failure of one doesn't stop others,
+        // though sequential is safer for some SMTP limits.
         // Given current scale, we'll fire them off.
-        participants.forEach(p => {
+        participants.forEach((p) => {
           const user = p.user as any;
           if (user?.email) {
             const emailHtml = `
@@ -119,9 +131,17 @@ export const createAnnouncement = async (
                 <p style="font-size: 11px; color: #94a3b8; text-align: center;">You are receiving this because you are a registered participant of ${eventName}.</p>
               </div>
             `;
-            
-            sendEmail(user.email, `[${eventName}] ${data.title}`, emailHtml)
-              .catch(err => console.error(`Failed to send announcement email to ${user.email}:`, err));
+
+            sendEmail(
+              user.email,
+              `[${eventName}] ${data.title}`,
+              emailHtml,
+            ).catch((err) =>
+              console.error(
+                `Failed to send announcement email to ${user.email}:`,
+                err,
+              ),
+            );
           }
         });
       }
@@ -132,13 +152,13 @@ export const createAnnouncement = async (
 };
 
 export const getEventAnnouncements = async (
-  eventId: string
+  eventId: string,
 ): Promise<IAnnouncement[]> => {
   ensureValidObjectId(eventId, "event ID");
 
   const announcements = await Announcement.find({
     event: new mongoose.Types.ObjectId(eventId),
-    isPublished: true
+    isPublished: true,
   })
     .populate("createdBy", "name email")
     .sort({ publishedAt: -1 });
@@ -149,12 +169,15 @@ export const getEventAnnouncements = async (
 export const updateAnnouncement = async (
   announcementId: string,
   organizerId: string,
-  data: UpdateAnnouncementInput
+  data: UpdateAnnouncementInput,
 ): Promise<IAnnouncement> => {
   ensureValidObjectId(announcementId, "announcement ID");
   ensureValidObjectId(organizerId, "organizer ID");
 
-  const announcement = await Announcement.findById(announcementId).populate("event", "createdBy");
+  const announcement = await Announcement.findById(announcementId).populate(
+    "event",
+    "createdBy",
+  );
 
   if (!announcement) {
     const error: any = new Error("Announcement not found");
@@ -164,10 +187,13 @@ export const updateAnnouncement = async (
 
   const event = announcement.event as any;
   const isEventOrganizer = event?.createdBy?.toString?.() === organizerId;
-  const isAnnouncementCreator = announcement.createdBy.toString() === organizerId;
+  const isAnnouncementCreator =
+    announcement.createdBy.toString() === organizerId;
 
   if (!isEventOrganizer && !isAnnouncementCreator) {
-    const error: any = new Error("Forbidden: You cannot update this announcement");
+    const error: any = new Error(
+      "Forbidden: You cannot update this announcement",
+    );
     error.statusCode = 403;
     throw error;
   }
@@ -186,7 +212,9 @@ export const updateAnnouncement = async (
 
   if (data.isPublished !== undefined) {
     announcement.isPublished = data.isPublished;
-    announcement.publishedAt = data.isPublished ? announcement.publishedAt ?? new Date() : undefined;
+    announcement.publishedAt = data.isPublished
+      ? (announcement.publishedAt ?? new Date())
+      : undefined;
   }
 
   await announcement.save();
@@ -196,12 +224,15 @@ export const updateAnnouncement = async (
 
 export const deleteAnnouncement = async (
   announcementId: string,
-  organizerId: string
+  organizerId: string,
 ): Promise<{ deleted: true }> => {
   ensureValidObjectId(announcementId, "announcement ID");
   ensureValidObjectId(organizerId, "organizer ID");
 
-  const announcement = await Announcement.findById(announcementId).populate("event", "createdBy");
+  const announcement = await Announcement.findById(announcementId).populate(
+    "event",
+    "createdBy",
+  );
 
   if (!announcement) {
     const error: any = new Error("Announcement not found");
@@ -211,10 +242,13 @@ export const deleteAnnouncement = async (
 
   const event = announcement.event as any;
   const isEventOrganizer = event?.createdBy?.toString?.() === organizerId;
-  const isAnnouncementCreator = announcement.createdBy.toString() === organizerId;
+  const isAnnouncementCreator =
+    announcement.createdBy.toString() === organizerId;
 
   if (!isEventOrganizer && !isAnnouncementCreator) {
-    const error: any = new Error("Forbidden: You cannot delete this announcement");
+    const error: any = new Error(
+      "Forbidden: You cannot delete this announcement",
+    );
     error.statusCode = 403;
     throw error;
   }

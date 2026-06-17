@@ -1,4 +1,4 @@
-import { Event, IEvent, EventStatus, IWorkflow, WorkflowNodeType } from "./event.model";
+import { Event, IEvent, EventStatus, EventType, IWorkflow, WorkflowNodeType } from "./event.model";
 import mongoose from "mongoose";
 import crypto from "crypto";
 
@@ -166,7 +166,7 @@ export const createEvent = async (data: CreateEventInput, userId: string) => {
     title: data.title,
     description: data.description,
     location: data.location ?? "",
-    eventType: data.eventType,
+    eventType: data.eventType as EventType,
     startDate,
     endDate,
     registrationStartDate,
