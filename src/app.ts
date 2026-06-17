@@ -19,16 +19,26 @@ import eventJudgeRoutes from "./modules/events/eventJudge.routes";
 
 import { env } from "./config/env";
 
-const allowedOrigins = [env.clientUrl, 'https://atria-frontend-new.vercel.app']
-
 const app = express();
+// Build allowed origins list and normalize entries
+const rawAllowed = (process.env.CLIENT_URLS || `${env.clientUrl},https://atria-frontend-new.vercel.app`)
+  .split(',')
+  .map(s => s.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set(rawAllowed));
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow requests with no origin (like mobile apps or curl)
+      // allow requests with no origin (like curl, Postman, or server-to-server)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      const normalized = origin.replace(/\/$/, '');
+
+      // In development, allow all origins for easier local testing
+      if (env.nodeEnv === 'development') return callback(null, true);
+
+      if (allowedOrigins.includes(normalized)) return callback(null, true);
       return callback(new Error('CORS policy: Origin not allowed'));
     },
     credentials: true
