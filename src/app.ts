@@ -19,12 +19,18 @@ import eventJudgeRoutes from "./modules/events/eventJudge.routes";
 
 import { env } from "./config/env";
 
+const allowedOrigins = [env.clientUrl, 'https://atria-frontend-new.vercel.app']
 
 const app = express();
 
 app.use(
   cors({
-    origin: env.clientUrl,
+    origin: (origin, callback) => {
+      // allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('CORS policy: Origin not allowed'));
+    },
     credentials: true
   })
 );
