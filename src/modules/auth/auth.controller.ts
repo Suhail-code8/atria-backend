@@ -24,11 +24,33 @@ export const register = async (
   next: NextFunction
 ) => {
   try {
-    const user = await registerUser(req.body);
+    const sanitizedUser = await registerUser(req.body);
+
+    // Fetch the full user document so we can generate tokens
+    const user = await User.findById(sanitizedUser._id);
+    if (!user) {
+      const error: any = new Error("User creation failed");
+      error.statusCode = 500;
+      throw error;
+    }
+
+    // Generate tokens — same flow as login
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    // Set the httpOnly refresh token cookie
+    res.cookie("refreshToken", refreshToken, REFRESH_TOKEN_COOKIE_OPTIONS);
+
     res.status(201).json({
       success: true,
       message: "User registered successfully",
-      data: user
+      data: {
+        accessToken,
+        user: sanitizedUser
+      }
     });
   } catch (error) {
     next(error);
