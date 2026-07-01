@@ -23,9 +23,9 @@ const allowedOrigins = [
   env.clientUrl,
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://atria-frontend-new.vercel.app'
+  'https://atria-frontend-new.vercel.app',
+  'https://13.48.71.51.nip.io'  // cloud server ip address with nip.io domain
 ]
-
 const app = express();
 
 app.use(
