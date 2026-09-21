@@ -501,9 +501,8 @@ export const generateEventPoster = async (
         createdAt: new Date() 
       });
       event.posterUrl = imageUrl;
+      await event.save();
     }
-    
-    await event.save();
 
     res.status(200).json({
       success: true,
