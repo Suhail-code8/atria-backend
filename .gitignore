@@ -37,3 +37,9 @@ coverage/
 
 # AI Workspace
 scratch/
+
+# Private keys & certificates — NEVER commit these
+*.pem
+*.key
+*.p12
+*.pfx
